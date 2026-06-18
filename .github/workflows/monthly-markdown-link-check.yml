@@ -1,0 +1,20 @@
+#
+# This source file is part of the AI Health Literacy Firebase open-source project
+#
+# SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
+#
+# SPDX-License-Identifier: MIT
+#
+
+name: Monthly Markdown Link Check
+
+on:
+  schedule:
+    - cron: '0 8 1 * *'
+
+jobs:
+  markdown_link_check:
+    name: Markdown Link Check
+    uses: SchmiedmayerLab/.github/.github/workflows/markdown-links.yml@v0.2
+    with:
+      runs_on_labels: '["ubuntu-latest"]'

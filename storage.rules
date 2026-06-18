@@ -1,0 +1,18 @@
+//
+// This source file is part of the AI Health Literacy Firebase open-source project
+//
+// SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
+//
+// SPDX-License-Identifier: MIT
+//
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /studies/{studyId}/users/{userId}/{allPaths=**} {
+      allow read, update, delete: if false;
+      allow create: if request.auth.uid == userId;
+    }
+  }
+}
