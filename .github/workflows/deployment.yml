@@ -1,5 +1,5 @@
 #
-# This source file is part of the Stanford Biodesign Digital Health LLMonFHIR- Firebase open-source project
+# This source file is part of the AI Health Literacy Firebase open-source project
 #
 # SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 #
@@ -45,14 +45,14 @@ jobs:
       environment: ${{ steps.set-env.outputs.environment }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Determine Environment
         id: set-env
         run: |
           if [[ -z "${{ inputs.environment }}" ]]; then
-            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
           else
-            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
           fi
   vars:
     name: Inject Environment Variables In Deployment Workflow
@@ -75,7 +75,7 @@ jobs:
   deployfirebase:
     name: Deploy Firebase Project
     needs: [buildandtest, determineenvironment, vars]
-    uses: StanfordBDHG/.github/.github/workflows/firebase-deploy.yml@v2
+    uses: SchmiedmayerLab/.github/.github/workflows/firebase-deploy.yml@v0.2
     permissions:
       contents: read
     with:

@@ -1,5 +1,5 @@
 //
-// This source file is part of the Stanford Biodesign Digital Health LLMonFHIR- Firebase open-source project
+// This source file is part of the AI Health Literacy Firebase open-source project
 //
 // SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 //
@@ -53,7 +53,7 @@ const createOpenAIClient = (ragEnabled: boolean) => {
     if (urlString.includes("/v1/chat/completions")) {
       await signInAnonymously(auth);
       const studyId =
-        process.env.STUDY_ID || "edu.stanford.LLMonFHIR.spineAI";
+        process.env.STUDY_ID || "edu.stanford.aihealthliteracy.spineAI";
       const name =
         `chat?studyId=${studyId}&ragEnabled=${ragEnabled}`
       const callable = httpsCallable(functions, name);

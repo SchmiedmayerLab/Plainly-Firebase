@@ -1,5 +1,5 @@
 //
-// This source file is part of the Stanford Biodesign Digital Health LLMonFHIR- Firebase open-source project
+// This source file is part of the AI Health Literacy Firebase open-source project
 //
 // SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 //
@@ -47,7 +47,7 @@ export function App() {
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            LLMonFHIR RAG Comparison
+            AI Health Literacy RAG Comparison
           </h1>
           <p className="text-gray-600">
             Compare responses with and without Retrieval-Augmented Generation
