@@ -10,10 +10,7 @@ import {defineSecret} from "firebase-functions/params";
 
 export const Secrets = {
   OPENAI_API_KEY: defineSecret("OPENAI_API_KEY"),
-<<<<<<< Updated upstream
-=======
   DOCUMENT_AI_SERVICE_ACCOUNT_KEY: defineSecret("DOCUMENT_AI_SERVICE_ACCOUNT_KEY"),
->>>>>>> Stashed changes
 };
 
 export const DOCUMENT_AI_PROCESSOR_ID = process.env.DOCUMENT_AI_PROCESSOR_ID;
