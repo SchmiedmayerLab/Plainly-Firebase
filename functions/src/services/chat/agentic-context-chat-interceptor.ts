@@ -36,8 +36,10 @@ Before calling the tool, briefly reason (internally, not in your output) about:
   literature — patients should see both sides of the evidence landscape, not just whichever
   the surface wording implies.
 
-Call 'retrieve_context' with one to three queries. Use more than one query when the
-question plausibly maps to more than one distinct clinical concept (for example, a
+The 'retrieve_context' tool accepts a single query per call. When more than one query is
+needed, call it once per query — up to three separate tool calls — rather than combining
+multiple queries into one call's query string. Use more than one query when the question
+plausibly maps to more than one distinct clinical concept (for example, a
 medication-interaction question about an NSAID and a kidney condition should retrieve
 both the medication-safety guidance and the condition-specific guidance separately, not a
 single blended query). Prefer queries likely to surface named guidelines or evidence
