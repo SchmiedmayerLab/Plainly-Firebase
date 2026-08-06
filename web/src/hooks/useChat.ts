@@ -53,7 +53,7 @@ const createOpenAIClient = (ragEnabled: boolean) => {
     if (urlString.includes("/v1/chat/completions")) {
       await signInAnonymously(auth);
       const studyId =
-        process.env.STUDY_ID || "edu.stanford.plainly.spineAI";
+        import.meta.env.VITE_STUDY_ID || "edu.stanford.plainly.spineAI";
       const name =
         `chat?studyId=${studyId}&ragEnabled=${ragEnabled}`
       const callable = httpsCallable(functions, name);

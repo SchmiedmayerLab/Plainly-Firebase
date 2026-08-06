@@ -12,7 +12,9 @@ service firebase.storage {
   match /b/{bucket}/o {
     match /studies/{studyId}/users/{userId}/{allPaths=**} {
       allow read, update, delete: if false;
-      allow create: if request.auth.uid == userId;
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && resource == null;
     }
   }
 }

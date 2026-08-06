@@ -29,6 +29,11 @@ export class DefaultIndexingService implements IndexingService {
       const embeddings = await this.embeddingService.embedBatch(
         chunks.map((c) => c.text),
       );
+      if (embeddings.length !== chunks.length) {
+        throw new Error(
+          `Expected ${chunks.length} embeddings, received ${embeddings.length}`,
+        );
+      }
 
       await this.contextStore.store(
         fileName,

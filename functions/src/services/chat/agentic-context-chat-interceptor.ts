@@ -81,14 +81,11 @@ const RETRIEVE_CONTEXT_TOOL: OpenAI.ChatCompletionTool = {
  * without context.
  */
 export class AgenticContextChatInterceptor implements ChatInterceptor {
-  private readonly openai: OpenAI;
-
   constructor(
     apiKey: string,
     private readonly contextStore: ContextStore,
-  ) {
-    this.openai = new OpenAI({apiKey});
-  }
+    private readonly openai: OpenAI = new OpenAI({apiKey}),
+  ) {}
 
   async intercept(body: ChatBody): Promise<ChatBody> {
     try {
