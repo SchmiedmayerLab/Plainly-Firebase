@@ -41,11 +41,15 @@ jobs:
         with:
           node-version: 24.x
       - name: Install Dependencies
-        run: npm --prefix functions install
-      - name: Build
+        run: |
+          npm --prefix functions ci
+          npm --prefix web ci
+      - name: Build Functions
         run: npm --prefix functions run build
-      - name: Lint
+      - name: Lint Functions
         run: npm --prefix functions run lint
+      - name: Lint Web Client
+        run: npm --prefix web run lint
     permissions:
       contents: read
   buildandtest:
@@ -55,6 +59,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           lfs: 'true'
       - name: Git LFS Pull
         run: git lfs pull
@@ -68,20 +73,20 @@ jobs:
           distribution: 'microsoft'
           java-version: '21'
       - name: Install Dependencies
-        run: npm --prefix functions install
+        run: |
+          npm --prefix functions ci
+          npm --prefix web ci
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
-      - name: Build
+      - name: Build Functions
         run: npm --prefix functions run build
-      - name: Test
+      - name: Test Functions with Coverage
         id: test
-        run: npm --prefix functions run test
-      # TODO: Make sure to actually run tests and upload coverage
-      # - name: Upload coverage to Codecov
-      #   uses: codecov/codecov-action@v7
-      #   with:
-      #     files: functions/coverage/lcov.info
-      #     fail_ci_if_error: true
-      #     token: ${{ secrets.CODECOV_TOKEN }}
+        run: npm --prefix functions run test:coverage
+      - name: Check Diff Coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        run: npm --prefix functions run test:diff-coverage -- "${{ github.event.pull_request.base.sha }}"
+      - name: Build Web Client
+        run: npm --prefix web run build
     permissions:
       contents: read
