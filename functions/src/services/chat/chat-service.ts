@@ -22,14 +22,11 @@ export type ChatBody =
 export type OnChunk = (data: string) => Promise<boolean>;
 
 export class ChatService {
-  private readonly openai: OpenAI;
-
   constructor(
     apiKey: string,
     private readonly interceptors: ChatInterceptor[],
-  ) {
-    this.openai = new OpenAI({apiKey});
-  }
+    private readonly openai: OpenAI = new OpenAI({apiKey}),
+  ) {}
 
   async chatNonStreaming(body: ChatCompletionCreateParamsNonStreaming): Promise<string> {
     const updatedBody = await this.applyInterceptors(body);

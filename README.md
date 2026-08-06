@@ -98,6 +98,7 @@ The web client connects to the local Authentication and Functions emulators and 
 ```bash
 npm --prefix functions run build
 npm --prefix functions run lint
+npm --prefix functions run test
 npm --prefix web run build
 npm --prefix web run lint
 ```
@@ -112,6 +113,7 @@ npm --prefix web run lint
 | `STORAGE_BUCKET` | Functions environment | Overrides the default `<project>.firebasestorage.app` bucket. |
 | `STORAGE_REGION` | Functions environment | Overrides the default `us-central1` Storage trigger region. |
 | `VERBOSE_LOGGING` | Functions environment | Enables detailed request and retrieval logging when set to `true`. |
+| `VITE_STUDY_ID` | Web environment | Overrides the web client's default study identifier. |
 
 Configure the production API key with:
 
