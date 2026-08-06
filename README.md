@@ -98,7 +98,7 @@ The web client connects to the local Authentication and Functions emulators and 
 ```bash
 npm --prefix functions run build
 npm --prefix functions run lint
-npm --prefix functions run test
+npm --prefix functions run test:coverage
 npm --prefix web run build
 npm --prefix web run lint
 ```

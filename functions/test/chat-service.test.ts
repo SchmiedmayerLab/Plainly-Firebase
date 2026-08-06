@@ -78,4 +78,37 @@ describe("ChatService", () => {
       "data: [DONE]\n\n",
     ]);
   });
+
+  it("stops consuming a stream when the client disconnects", async () => {
+    let yieldedSecondChunk = false;
+    async function* completionStream() {
+      yield {id: "first"};
+      yieldedSecondChunk = true;
+      yield {id: "second"};
+    }
+
+    const client = {
+      chat: {
+        completions: {
+          create: async () => completionStream(),
+        },
+      },
+    } as unknown as OpenAI;
+    const service = new ChatService("test-key", [], client);
+    const chunks: string[] = [];
+
+    await service.chatStreaming(
+      {...request, stream: true},
+      async (chunk) => {
+        chunks.push(chunk);
+        return false;
+      },
+    );
+
+    assert.equal(yieldedSecondChunk, false);
+    assert.deepEqual(chunks, [
+      'data: {"id":"first"}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+  });
 });

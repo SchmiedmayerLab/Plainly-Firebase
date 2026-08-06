@@ -1,15 +1,17 @@
 {
   "main": "lib/index.js",
   "scripts": {
-    "lint": "eslint src test",
-    "lint:fix": "eslint src test --fix",
-    "lint:strict": "eslint src test --max-warnings 0",
+    "lint": "eslint src test scripts",
+    "lint:fix": "eslint src test scripts --fix",
+    "lint:strict": "eslint src test scripts --max-warnings 0",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions,storage",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "test": "tsx --test test/**/*.test.ts",
+    "test:coverage": "c8 --all --src src --reporter=text --reporter=lcov --check-coverage --lines 35 --statements 35 --branches 65 --functions 75 tsx --test test/**/*.test.ts",
+    "test:diff-coverage": "node scripts/check-diff-coverage.mjs",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "c8": "^12.0.0",
     "eslint": "^10.8.0",
     "globals": "^17.8.0",
     "tsx": "^4.23.1",

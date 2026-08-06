@@ -14,7 +14,7 @@ import {defineConfig, globalIgnores} from "eslint/config";
 export default defineConfig([
   globalIgnores(["lib", "generated"]),
   {
-    files: ["{src,test}/**/*.ts"],
+    files: ["{src,test}/**/*.ts", "scripts/**/*.mjs"],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,

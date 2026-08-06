@@ -59,6 +59,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           lfs: 'true'
       - name: Git LFS Pull
         run: git lfs pull
@@ -79,17 +80,13 @@ jobs:
         run: npm install -g firebase-tools
       - name: Build Functions
         run: npm --prefix functions run build
-      - name: Test Functions
+      - name: Test Functions with Coverage
         id: test
-        run: npm --prefix functions run test
+        run: npm --prefix functions run test:coverage
+      - name: Check Diff Coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        run: npm --prefix functions run test:diff-coverage -- "${{ github.event.pull_request.base.sha }}"
       - name: Build Web Client
         run: npm --prefix web run build
-      # TODO: Make sure to actually run tests and upload coverage
-      # - name: Upload coverage to Codecov
-      #   uses: codecov/codecov-action@v7
-      #   with:
-      #     files: functions/coverage/lcov.info
-      #     fail_ci_if_error: true
-      #     token: ${{ secrets.CODECOV_TOKEN }}
     permissions:
       contents: read
