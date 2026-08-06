@@ -1,6 +1,6 @@
 <!--
 
-This source file is part of the AI Health Literacy Firebase open-source project
+This source file is part of the Plainly Firebase open-source project
 
 SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 
@@ -8,9 +8,9 @@ SPDX-License-Identifier: MIT
 
 -->
 
-# AI Health Literacy Firebase Backend
+# Plainly Firebase Backend
 
-Firebase Functions backend for AI Health Literacy with a RAG-enabled OpenAI-compatible `/chat` endpoint and a lightweight web client for comparison testing.
+Firebase Functions backend for Plainly with a RAG-enabled OpenAI-compatible `/chat` endpoint and a lightweight web client for comparison testing.
 
 ## Quickstart
 
@@ -41,7 +41,7 @@ The web UI compares responses with RAG enabled and disabled using mock FHIR tool
 ## Architecture
 
 ```
-Realtime chat path for AI Health Literacy / web client
+Realtime chat path for Plainly / web client
   → OpenAI-compatible Firebase Function `/chat`
       (drop-in replacement for OpenAI `/v1/chat/completions`)
       (client keeps the same request body; only the URL changes)

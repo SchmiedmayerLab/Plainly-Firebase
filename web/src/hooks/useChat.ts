@@ -1,5 +1,5 @@
 //
-// This source file is part of the AI Health Literacy Firebase open-source project
+// This source file is part of the Plainly Firebase open-source project
 //
 // SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 //
@@ -16,7 +16,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { initializeApp } from "firebase/app";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
-import { connectAuthEmulator, getAuth, initializeAuth, signInAnonymously } from "firebase/auth";
+import { connectAuthEmulator, initializeAuth, signInAnonymously } from "firebase/auth";
 
 export interface RagContextInfo {
   context: string;
@@ -53,7 +53,7 @@ const createOpenAIClient = (ragEnabled: boolean) => {
     if (urlString.includes("/v1/chat/completions")) {
       await signInAnonymously(auth);
       const studyId =
-        process.env.STUDY_ID || "edu.stanford.aihealthliteracy.spineAI";
+        process.env.STUDY_ID || "edu.stanford.plainly.spineAI";
       const name =
         `chat?studyId=${studyId}&ragEnabled=${ragEnabled}`
       const callable = httpsCallable(functions, name);
