@@ -77,7 +77,7 @@ jobs:
           npm --prefix functions ci
           npm --prefix web ci
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools
+        run: npm install -g firebase-tools@15.25.1
       - name: Build Functions
         run: npm --prefix functions run build
       - name: Test Functions with Coverage
@@ -86,6 +86,15 @@ jobs:
       - name: Check Diff Coverage
         if: ${{ github.event_name == 'pull_request' }}
         run: npm --prefix functions run test:diff-coverage -- "${{ github.event.pull_request.base.sha }}"
+      - name: Test Firebase Integration
+        run: >-
+          firebase emulators:exec
+          --project demo-plainly
+          --only auth,functions,firestore,storage
+          "npm --prefix functions run test:integration"
+        env:
+          FIREBASE_CLI_DISABLE_UPDATE_CHECK: true
+          OPENAI_API_KEY: integration-test-key
       - name: Build Web Client
         run: npm --prefix web run build
     permissions:

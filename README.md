@@ -99,6 +99,8 @@ The web client connects to the local Authentication and Functions emulators and 
 npm --prefix functions run build
 npm --prefix functions run lint
 npm --prefix functions run test:coverage
+firebase emulators:exec --project demo-plainly --only auth,functions,firestore,storage \
+  "npm --prefix functions run test:integration"
 npm --prefix web run build
 npm --prefix web run lint
 ```
