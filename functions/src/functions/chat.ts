@@ -32,6 +32,7 @@ export const chat = onCall(
         studyId,
         openAIApiKey: Secrets.OPENAI_API_KEY.value(),
         ragEnabled,
+        mockChatError: req.rawRequest.query.mockChatError === "true",
       });
 
       if (chatBody.stream && req.acceptsStreaming) {
