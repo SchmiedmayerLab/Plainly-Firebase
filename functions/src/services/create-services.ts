@@ -28,6 +28,7 @@ import {SlidingWindowTextChunker} from "./chunking/text-chunking/sliding-window-
 import {emulatorMockChatResponse} from "../env";
 import {createMockOpenAIClient} from "./chat/mock-openai-client";
 import { openAI } from "@genkit-ai/compat-oai/openai";
+import { OpenAI } from "openai/client";
 
 export interface ServiceOptions {
   studyId: string;
@@ -95,24 +96,21 @@ export function createChatService(
 ): ChatService {
   if (mockResponse !== undefined) {
     return new ChatService(
-      "plainly-emulator-key",
-      [],
-      undefined,
       createMockOpenAIClient(mockResponse, {
         rejectRequest: options.mockChatError,
         rejectStreamAfterFirstChunk: options.mockChatErrorAfterChunk,
       }),
     );
   }
+  const client = new OpenAI({ baseURL: options.openAIBaseUrl, apiKey: options.openAIApiKey });
   if (!options.ragEnabled) {
-    return new ChatService(options.openAIApiKey, [], options.openAIBaseUrl);
+    return new ChatService(client);
   }
   const {ai, embedder} = createAI(options);
   const contextStore = new FirestoreContextStore(options.studyId, ai, embedder);
   return new ChatService(
-    options.openAIApiKey,
-    [new AgenticContextChatInterceptor(options.openAIApiKey, contextStore)],
-    options.openAIBaseUrl,
+    client,
+    [new AgenticContextChatInterceptor(contextStore, client)],
   );
 }
 
