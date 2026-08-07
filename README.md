@@ -82,6 +82,11 @@ npm --prefix functions run build
 firebase emulators:start --only auth,functions,storage
 ```
 
+For deterministic client end-to-end tests, set `PLAINLY_MOCK_CHAT_RESPONSE`
+before starting the emulator. The Functions emulator then returns that text as
+an OpenAI-compatible completion without making an external API request. This
+override is ignored outside the Firebase emulator.
+
 ### Run the Web Client
 
 In a separate terminal:
