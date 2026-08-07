@@ -141,6 +141,30 @@ describe("mock OpenAI client", () => {
     assert.equal(chunks.at(-1), "data: [DONE]\n\n");
   });
 
+  it("does not split Unicode code points across streaming chunks", async () => {
+    const unicodeResponse = "Plainly 🧠 response";
+    const service = new ChatService("test-key", [], createMockOpenAIClient(unicodeResponse));
+    const chunks: string[] = [];
+
+    await service.chatStreaming(
+      {
+        model: "test-model",
+        messages: [{role: "user", content: "Hello"}],
+        stream: true,
+      },
+      async (chunk) => {
+        chunks.push(chunk);
+        return true;
+      },
+    );
+
+    const contentChunks = chunks
+      .slice(0, -2)
+      .map((chunk) => JSON.parse(chunk.slice(6)).choices[0].delta.content as string);
+    assert.equal(contentChunks.join(""), unicodeResponse);
+    assert.ok(contentChunks.every((chunk) => !chunk.includes("\uFFFD")));
+  });
+
   it("accepts production-compatible array constraints", async () => {
     const service = new ChatService("test-key", [], createMockOpenAIClient(response));
 
@@ -202,5 +226,27 @@ describe("mock OpenAI client", () => {
       () => service.chatNonStreaming(requestWithArraySchema({minItems: 1, maxItems: 250, uniqueItems: true})),
       OpenAI.BadRequestError,
     );
+  });
+
+  it("can return a production-shaped API failure after streaming starts", async () => {
+    const service = new ChatService(
+      "test-key",
+      [],
+      createMockOpenAIClient(response, {rejectStreamAfterFirstChunk: true}),
+    );
+    const chunks: string[] = [];
+
+    await assert.rejects(
+      () => service.chatStreaming(
+        {...requestWithArraySchema({minItems: 1, maxItems: 250, uniqueItems: true}), stream: true},
+        async (chunk) => {
+          chunks.push(chunk);
+          return true;
+        },
+      ),
+      OpenAI.BadRequestError,
+    );
+    assert.equal(chunks.length, 1);
+    assert.notEqual(chunks[0], "data: [DONE]\n\n");
   });
 });

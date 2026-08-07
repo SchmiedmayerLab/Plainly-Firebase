@@ -28,6 +28,7 @@ export interface ServiceOptions {
   openAIApiKey: string;
   ragEnabled?: boolean;
   mockChatError?: boolean;
+  mockChatErrorAfterChunk?: boolean;
 }
 
 function createAI(openAIApiKey: string) {
@@ -46,7 +47,10 @@ export function createChatService(
     return new ChatService(
       "plainly-emulator-key",
       [],
-      createMockOpenAIClient(mockResponse, {rejectRequest: options.mockChatError}),
+      createMockOpenAIClient(mockResponse, {
+        rejectRequest: options.mockChatError,
+        rejectStreamAfterFirstChunk: options.mockChatErrorAfterChunk,
+      }),
     );
   }
   if (!options.ragEnabled) {

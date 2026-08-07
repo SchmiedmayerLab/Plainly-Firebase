@@ -15,6 +15,7 @@ const schemaValidator = new Ajv({strict: false});
 
 interface MockOpenAIClientOptions {
   rejectRequest?: boolean;
+  rejectStreamAfterFirstChunk?: boolean;
 }
 
 /** Creates the minimal OpenAI client surface used by ChatService. */
@@ -34,7 +35,11 @@ export function createMockOpenAIClient(
             );
           }
           if (body.stream) {
-            return mockCompletionStream(body.model, response);
+            return mockCompletionStream(
+              body.model,
+              response,
+              options.rejectStreamAfterFirstChunk,
+            );
           }
           return mockCompletion(body.model, response);
         },
@@ -90,9 +95,17 @@ function mockCompletion(model: string, response: string) {
   };
 }
 
-async function* mockCompletionStream(model: string, response: string) {
-  const splitIndex = Math.ceil(response.length / 2);
-  for (const content of [response.slice(0, splitIndex), response.slice(splitIndex)]) {
+async function* mockCompletionStream(
+  model: string,
+  response: string,
+  rejectAfterFirstChunk = false,
+) {
+  const codePoints = Array.from(response);
+  const splitIndex = Math.ceil(codePoints.length / 2);
+  for (const [index, content] of [
+    codePoints.slice(0, splitIndex).join(""),
+    codePoints.slice(splitIndex).join(""),
+  ].entries()) {
     if (!content) {
       continue;
     }
@@ -108,6 +121,12 @@ async function* mockCompletionStream(model: string, response: string) {
         finish_reason: null,
       }],
     };
+    if (index === 0 && rejectAfterFirstChunk) {
+      throw mockBadRequestError(
+        "Mock chat stream failed after its first chunk.",
+        "mock_chat_stream",
+      );
+    }
   }
   yield {
     id: completionId,

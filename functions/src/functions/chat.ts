@@ -33,6 +33,7 @@ export const chat = onCall(
         openAIApiKey: Secrets.OPENAI_API_KEY.value(),
         ragEnabled,
         mockChatError: req.rawRequest.query.mockChatError === "true",
+        mockChatErrorAfterChunk: req.rawRequest.query.mockChatErrorAfterChunk === "true",
       });
 
       if (chatBody.stream && req.acceptsStreaming) {
