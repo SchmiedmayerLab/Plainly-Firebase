@@ -34,6 +34,8 @@ export interface ServiceOptions {
   openAIApiKey: string;
   openAIBaseUrl?: string;
   ragEnabled?: boolean;
+  mockChatError?: boolean;
+  mockChatErrorAfterChunk?: boolean;
 }
 
 const CUSTOM_OPENAI_PLUGIN_NAME = "customOpenAI";
@@ -96,7 +98,10 @@ export function createChatService(
       "plainly-emulator-key",
       [],
       undefined,
-      createMockOpenAIClient(mockResponse),
+      createMockOpenAIClient(mockResponse, {
+        rejectRequest: options.mockChatError,
+        rejectStreamAfterFirstChunk: options.mockChatErrorAfterChunk,
+      }),
     );
   }
   if (!options.ragEnabled) {

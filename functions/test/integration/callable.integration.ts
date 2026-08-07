@@ -93,7 +93,11 @@ describe("chat callable", () => {
 
     const expected = process.env.PLAINLY_MOCK_CHAT_RESPONSE;
     assert.ok(expected, "PLAINLY_MOCK_CHAT_RESPONSE must be configured");
-    assert.ok(chunks.join("").includes(expected));
+    const content = chunks
+      .filter((chunk) => chunk.startsWith("data: ") && !chunk.includes("[DONE]"))
+      .map((chunk) => JSON.parse(chunk.slice(6)).choices[0].delta.content ?? "")
+      .join("");
+    assert.equal(content, expected);
   });
 });
 
