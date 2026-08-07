@@ -23,3 +23,17 @@ export const STORAGE_FILE_PATH_PATTERN =
   /studies\/(?<studyId>[^/]+)\/rag_files\/(?<fileName>[^/]+)$/;
 
 export const VERBOSE_LOGGING = process.env.VERBOSE_LOGGING === "true";
+
+/**
+ * Returns a deterministic chat response when explicitly configured for the
+ * Firebase emulator. Production runtimes always return `undefined`.
+ */
+export function emulatorMockChatResponse(
+  environment: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  if (environment.FUNCTIONS_EMULATOR !== "true") {
+    return undefined;
+  }
+  const response = environment.PLAINLY_MOCK_CHAT_RESPONSE?.trim();
+  return response ? response : undefined;
+}

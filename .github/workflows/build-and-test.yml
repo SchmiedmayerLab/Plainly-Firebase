@@ -95,6 +95,7 @@ jobs:
         env:
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: true
           OPENAI_API_KEY: integration-test-key
+          PLAINLY_MOCK_CHAT_RESPONSE: Plainly Firebase integration response.
       - name: Build Web Client
         run: npm --prefix web run build
     permissions:

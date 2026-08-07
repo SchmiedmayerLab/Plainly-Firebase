@@ -61,6 +61,38 @@ describe("chat callable", () => {
       hasFunctionsCode("functions/invalid-argument"),
     );
   });
+
+  it("returns the configured emulator response", async () => {
+    const chat = httpsCallable(functions, "chat?studyId=test-study&ragEnabled=true");
+    const result = await chat(JSON.stringify({
+      model: "test-model",
+      messages: [{role: "user", content: "Hello"}],
+      stream: false,
+    }));
+    const completion = JSON.parse(result.data as string);
+
+    assert.equal(completion.choices[0].message.content, process.env.PLAINLY_MOCK_CHAT_RESPONSE);
+  });
+
+  it("streams the configured emulator response", async () => {
+    const chat = httpsCallable<string, void, string>(
+      functions,
+      "chat?studyId=test-study&ragEnabled=true",
+    );
+    const result = await chat.stream(JSON.stringify({
+      model: "test-model",
+      messages: [{role: "user", content: "Hello"}],
+      stream: true,
+    }));
+    const chunks: string[] = [];
+
+    for await (const chunk of result.stream) {
+      chunks.push(chunk);
+    }
+    await result.data;
+
+    assert.match(chunks.join(""), new RegExp(process.env.PLAINLY_MOCK_CHAT_RESPONSE ?? ""));
+  });
 });
 
 function hasFunctionsCode(expectedCode: string) {

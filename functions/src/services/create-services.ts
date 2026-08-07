@@ -20,6 +20,8 @@ import {GenkitEmbeddingService} from "./embedding/genkit-embedding-service";
 import {IndexingService} from "./indexing/indexing-service";
 import {DefaultIndexingService} from "./indexing/default-indexing-service";
 import {SlidingWindowTextChunker} from "./chunking/text-chunking/sliding-window-text-chunker";
+import {emulatorMockChatResponse} from "../env";
+import {createMockOpenAIClient} from "./chat/mock-openai-client";
 
 export interface ServiceOptions {
   studyId: string;
@@ -35,7 +37,17 @@ export function createContextStore(studyId: string): ContextStore {
   return new FirestoreContextStore(studyId, genkit({plugins: []}));
 }
 
-export function createChatService(options: ServiceOptions): ChatService {
+export function createChatService(
+  options: ServiceOptions,
+  mockResponse = emulatorMockChatResponse(),
+): ChatService {
+  if (mockResponse !== undefined) {
+    return new ChatService(
+      "plainly-emulator-key",
+      [],
+      createMockOpenAIClient(mockResponse),
+    );
+  }
   if (!options.ragEnabled) {
     return new ChatService(options.openAIApiKey, []);
   }
