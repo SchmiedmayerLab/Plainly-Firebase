@@ -27,8 +27,8 @@ import {DefaultIndexingService} from "./indexing/default-indexing-service";
 import {SlidingWindowTextChunker} from "./chunking/text-chunking/sliding-window-text-chunker";
 import {emulatorMockChatResponse} from "../env";
 import {createMockOpenAIClient} from "./chat/mock-openai-client";
-import { openAI } from "@genkit-ai/compat-oai/openai";
-import { OpenAI } from "openai/client";
+import {openAI} from "@genkit-ai/compat-oai/openai";
+import {OpenAI} from "openai/client";
 
 export interface ServiceOptions {
   studyId: string;
@@ -87,7 +87,11 @@ function createAI(options: ServiceOptions): AIContext {
 }
 
 export function createContextStore(studyId: string): ContextStore {
-  return new FirestoreContextStore(studyId, genkit({plugins: []}));
+  return new FirestoreContextStore(
+    studyId,
+    genkit({plugins: []}),
+    openAI.embedder(EMBEDDING_MODEL),
+  );
 }
 
 export function createChatService(

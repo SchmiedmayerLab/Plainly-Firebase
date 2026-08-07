@@ -8,7 +8,6 @@
 
 import {EmbedderReference, Genkit} from "genkit";
 import {ChunkEmbedding, ContextStore, RetrievedDocument} from "./context-store";
-import openAI from "@genkit-ai/compat-oai/openai";
 import {FieldValue, Firestore, getFirestore} from "firebase-admin/firestore";
 import {defineFirestoreRetriever} from "@genkit-ai/firebase";
 
@@ -19,7 +18,7 @@ export class FirestoreContextStore implements ContextStore {
   constructor(
     studyId: string,
     private readonly ai: Genkit,
-    embedder: EmbedderReference = openAI.embedder("text-embedding-ada-002"),
+    embedder: EmbedderReference,
     private readonly firestore: Firestore = getFirestore(),
   ) {
     this.collectionName = `studies/${studyId}/embeddings`;
