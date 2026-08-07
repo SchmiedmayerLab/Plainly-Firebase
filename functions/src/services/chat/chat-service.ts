@@ -25,7 +25,8 @@ export class ChatService {
   constructor(
     apiKey: string,
     private readonly interceptors: ChatInterceptor[],
-    private readonly openai: OpenAI = new OpenAI({apiKey}),
+    baseUrl?: string,
+    private readonly openai: OpenAI = new OpenAI({baseURL: baseUrl, apiKey}),
   ) {}
 
   async chatNonStreaming(body: ChatCompletionCreateParamsNonStreaming): Promise<string> {

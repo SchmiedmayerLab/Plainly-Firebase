@@ -7,7 +7,7 @@
 //
 
 import {genkit} from "genkit";
-import openAI from "@genkit-ai/compat-oai/openai";
+import { openAICompatible } from "@genkit-ai/compat-oai";
 import {ChatService} from "./chat/chat-service";
 import {AgenticContextChatInterceptor} from "./chat/agentic-context-chat-interceptor";
 import {ComposedChunkingStrategy} from "./chunking/composed-chunking-strategy";
@@ -22,15 +22,23 @@ import {DefaultIndexingService} from "./indexing/default-indexing-service";
 import {SlidingWindowTextChunker} from "./chunking/text-chunking/sliding-window-text-chunker";
 import {emulatorMockChatResponse} from "../env";
 import {createMockOpenAIClient} from "./chat/mock-openai-client";
+import { openAI } from "@genkit-ai/compat-oai/openai";
 
 export interface ServiceOptions {
   studyId: string;
   openAIApiKey: string;
+  openAIBaseUrl?: string;
   ragEnabled?: boolean;
 }
 
-function createAI(openAIApiKey: string) {
-  return genkit({plugins: [openAI({apiKey: openAIApiKey})]});
+function createAI(options: ServiceOptions) {
+  if (options.openAIBaseUrl) {
+    return genkit({plugins: [
+      openAICompatible({name: "customOpenAI", baseURL: options.openAIBaseUrl, apiKey: options.openAIApiKey})
+    ]});
+  } else {
+    return genkit({plugins: [openAI({apiKey: options.openAIApiKey})]});
+  }
 }
 
 export function createContextStore(studyId: string): ContextStore {
@@ -45,22 +53,24 @@ export function createChatService(
     return new ChatService(
       "plainly-emulator-key",
       [],
+      undefined,
       createMockOpenAIClient(mockResponse),
     );
   }
   if (!options.ragEnabled) {
-    return new ChatService(options.openAIApiKey, []);
+    return new ChatService(options.openAIApiKey, [], options.openAIBaseUrl);
   }
-  const ai = createAI(options.openAIApiKey);
+  const ai = createAI(options);
   const contextStore = new FirestoreContextStore(options.studyId, ai);
   return new ChatService(
     options.openAIApiKey,
     [new AgenticContextChatInterceptor(options.openAIApiKey, contextStore)],
+    options.openAIBaseUrl,
   );
 }
 
 export function createIndexingService(options: ServiceOptions): IndexingService {
-  const ai = createAI(options.openAIApiKey);
+  const ai = createAI(options);
   const contextStore = new FirestoreContextStore(options.studyId, ai);
   const embeddingService = new GenkitEmbeddingService(ai);
   const plainTextExtractor = new PlainTextExtractor();
