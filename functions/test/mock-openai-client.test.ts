@@ -9,16 +9,45 @@
 import assert from "node:assert/strict";
 import {describe, it} from "node:test";
 import {deleteApp, getApp, initializeApp} from "firebase-admin/app";
+import OpenAI from "openai";
 import {emulatorMockChatResponse} from "../src/env";
 import {
   createChatService,
   createContextStore,
   createIndexingService,
 } from "../src/services/create-services";
-import {ChatService} from "../src/services/chat/chat-service";
+import {ChatBody, ChatService} from "../src/services/chat/chat-service";
 import {createMockOpenAIClient} from "../src/services/chat/mock-openai-client";
 
 const response = "Plainly Firebase end-to-end response.";
+
+function requestWithArraySchema(
+  constraints: Record<string, unknown>,
+): ChatBody {
+  return {
+    model: "test-model",
+    messages: [{role: "user", content: "Hello"}],
+    stream: false,
+    tools: [{
+      type: "function",
+      function: {
+        name: "get_resources",
+        description: "Retrieve health resources.",
+        parameters: {
+          type: "object",
+          properties: {
+            resourceCategories: {
+              type: "array",
+              items: {type: "string"},
+              ...constraints,
+            },
+          },
+          required: ["resourceCategories"],
+        },
+      },
+    }],
+  };
+}
 
 describe("emulator mock guard", () => {
   it("never enables the mock outside the Firebase emulator", () => {
@@ -103,8 +132,121 @@ describe("mock OpenAI client", () => {
       },
     );
 
-    assert.equal(JSON.parse(chunks[0].slice(6)).choices[0].delta.content, response);
-    assert.equal(JSON.parse(chunks[1].slice(6)).choices[0].finish_reason, "stop");
-    assert.equal(chunks[2], "data: [DONE]\n\n");
+    const content = chunks
+      .slice(0, -2)
+      .map((chunk) => JSON.parse(chunk.slice(6)).choices[0].delta.content)
+      .join("");
+    assert.equal(content, response);
+    assert.equal(JSON.parse(chunks.at(-2)?.slice(6) ?? "").choices[0].finish_reason, "stop");
+    assert.equal(chunks.at(-1), "data: [DONE]\n\n");
+  });
+
+  it("does not split Unicode code points across streaming chunks", async () => {
+    const unicodeResponse = "Plainly 🧠 response";
+    const service = new ChatService("test-key", [], createMockOpenAIClient(unicodeResponse));
+    const chunks: string[] = [];
+
+    await service.chatStreaming(
+      {
+        model: "test-model",
+        messages: [{role: "user", content: "Hello"}],
+        stream: true,
+      },
+      async (chunk) => {
+        chunks.push(chunk);
+        return true;
+      },
+    );
+
+    const contentChunks = chunks
+      .slice(0, -2)
+      .map((chunk) => JSON.parse(chunk.slice(6)).choices[0].delta.content as string);
+    assert.equal(contentChunks.join(""), unicodeResponse);
+    assert.ok(contentChunks.every((chunk) => !chunk.includes("\uFFFD")));
+  });
+
+  it("accepts production-compatible array constraints", async () => {
+    const service = new ChatService("test-key", [], createMockOpenAIClient(response));
+
+    const result = await service.chatNonStreaming(requestWithArraySchema({
+      minItems: 1,
+      maxItems: 250,
+      uniqueItems: true,
+    }));
+
+    assert.equal(JSON.parse(result).choices[0].message.content, response);
+  });
+
+  for (const [keyword, expectedType] of [
+    ["minItems", "integer"],
+    ["maxItems", "integer"],
+    ["uniqueItems", "boolean"],
+  ] as const) {
+    it(`rejects a null ${keyword} constraint like OpenAI`, async () => {
+      const service = new ChatService("test-key", [], createMockOpenAIClient(response));
+
+      await assert.rejects(
+        () => service.chatNonStreaming(requestWithArraySchema({[keyword]: null})),
+        (error: unknown) => {
+          assert.ok(error instanceof OpenAI.BadRequestError);
+          assert.equal(error.code, "invalid_function_parameters");
+          assert.equal(error.param, "tools[0].function.parameters");
+          assert.match(error.message, new RegExp(`must be ${expectedType}`));
+          return true;
+        },
+      );
+    });
+  }
+
+  it("rejects an empty enum like OpenAI", async () => {
+    const service = new ChatService("test-key", [], createMockOpenAIClient(response));
+
+    await assert.rejects(
+      () => service.chatNonStreaming(requestWithArraySchema({
+        items: {type: "string", enum: []},
+      })),
+      (error: unknown) => {
+        assert.ok(error instanceof OpenAI.BadRequestError);
+        assert.equal(error.code, "invalid_function_parameters");
+        assert.equal(error.param, "tools[0].function.parameters");
+        assert.match(error.message, /must NOT have fewer than 1 items/);
+        return true;
+      },
+    );
+  });
+
+  it("can return a production-shaped API failure", async () => {
+    const service = new ChatService(
+      "test-key",
+      [],
+      createMockOpenAIClient(response, {rejectRequest: true}),
+    );
+
+    await assert.rejects(
+      () => service.chatNonStreaming(requestWithArraySchema({minItems: 1, maxItems: 250, uniqueItems: true})),
+      OpenAI.BadRequestError,
+    );
+  });
+
+  it("can return a production-shaped API failure after streaming starts", async () => {
+    const service = new ChatService(
+      "test-key",
+      [],
+      createMockOpenAIClient(response, {rejectStreamAfterFirstChunk: true}),
+    );
+    const chunks: string[] = [];
+
+    await assert.rejects(
+      () => service.chatStreaming(
+        {...requestWithArraySchema({minItems: 1, maxItems: 250, uniqueItems: true}), stream: true},
+        async (chunk) => {
+          chunks.push(chunk);
+          return true;
+        },
+      ),
+      OpenAI.BadRequestError,
+    );
+    assert.equal(chunks.length, 1);
+    assert.notEqual(chunks[0], "data: [DONE]\n\n");
   });
 });
