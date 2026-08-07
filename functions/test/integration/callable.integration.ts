@@ -91,7 +91,9 @@ describe("chat callable", () => {
     }
     await result.data;
 
-    assert.match(chunks.join(""), new RegExp(process.env.PLAINLY_MOCK_CHAT_RESPONSE ?? ""));
+    const expected = process.env.PLAINLY_MOCK_CHAT_RESPONSE;
+    assert.ok(expected, "PLAINLY_MOCK_CHAT_RESPONSE must be configured");
+    assert.ok(chunks.join("").includes(expected));
   });
 });
 
