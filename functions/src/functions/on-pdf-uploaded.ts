@@ -25,7 +25,7 @@ export const onPDFUploaded = onObjectFinalized(
   {
     bucket: STORAGE_BUCKET,
     region: STORAGE_REGION,
-    secrets: [Secrets.OPENAI_API_KEY],
+    secrets: [Secrets.OPENAI_API_KEY, Secrets.OPENAI_BASE_URL],
     serviceAccount: SERVICE_ACCOUNT,
     timeoutSeconds: 540,
     memory: "512MiB",
@@ -59,6 +59,7 @@ export const onPDFUploaded = onObjectFinalized(
       const indexingService = createIndexingService({
         studyId,
         openAIApiKey: Secrets.OPENAI_API_KEY.value(),
+        openAIBaseUrl: Secrets.OPENAI_BASE_URL.value(),
       });
 
       const result = await indexingService.index(
