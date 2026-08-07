@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: MIT
 //
 
-import {Genkit} from "genkit";
+import {EmbedderReference, Genkit} from "genkit";
 import {ChunkEmbedding, ContextStore, RetrievedDocument} from "./context-store";
 import openAI from "@genkit-ai/compat-oai/openai";
 import {FieldValue, Firestore, getFirestore} from "firebase-admin/firestore";
@@ -19,10 +19,11 @@ export class FirestoreContextStore implements ContextStore {
   constructor(
     studyId: string,
     private readonly ai: Genkit,
-    embedder = openAI.embedder("text-embedding-3-small"),
+    embedder: EmbedderReference = openAI.embedder("text-embedding-ada-002"),
     private readonly firestore: Firestore = getFirestore(),
   ) {
     this.collectionName = `studies/${studyId}/embeddings`;
+    console.log(`[ContextStore] Using Firestore collection ${this.collectionName} for study ${studyId}`);
     this.retriever = defineFirestoreRetriever(ai, {
       name: `rag-chunks-${studyId}`,
       firestore,

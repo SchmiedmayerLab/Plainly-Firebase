@@ -6,8 +6,13 @@
 // SPDX-License-Identifier: MIT
 //
 
-import {genkit} from "genkit";
-import { openAICompatible } from "@genkit-ai/compat-oai";
+import {embedderRef, EmbedderReference, Genkit, genkit} from "genkit";
+import {
+  compatOaiModelRef,
+  defineCompatOpenAIEmbedder,
+  defineCompatOpenAIModel,
+  openAICompatible,
+} from "@genkit-ai/compat-oai";
 import {ChatService} from "./chat/chat-service";
 import {AgenticContextChatInterceptor} from "./chat/agentic-context-chat-interceptor";
 import {ComposedChunkingStrategy} from "./chunking/composed-chunking-strategy";
@@ -31,14 +36,51 @@ export interface ServiceOptions {
   ragEnabled?: boolean;
 }
 
-function createAI(options: ServiceOptions) {
-  if (options.openAIBaseUrl) {
-    return genkit({plugins: [
-      openAICompatible({name: "customOpenAI", baseURL: options.openAIBaseUrl, apiKey: options.openAIApiKey})
-    ]});
-  } else {
-    return genkit({plugins: [openAI({apiKey: options.openAIApiKey})]});
+const CUSTOM_OPENAI_PLUGIN_NAME = "customOpenAI";
+const EMBEDDING_MODEL = "text-embedding-ada-002";
+
+/**
+ * The Genkit instance together with the embedder reference valid for it.
+ *
+ * The reference must be created from the plugin that is actually registered:
+ * `openAI.embedder(...)` produces an `openai/...` reference, which no
+ * `openAICompatible` plugin can resolve.
+ */
+interface AIContext {
+  ai: Genkit;
+  embedder: EmbedderReference;
+}
+
+function createAI(options: ServiceOptions): AIContext {
+  if (!options.openAIBaseUrl) {
+    return {
+      ai: genkit({plugins: [openAI({apiKey: options.openAIApiKey})]}),
+      embedder: openAI.embedder(EMBEDDING_MODEL),
+    };
   }
+
+  const pluginOptions = {
+    name: CUSTOM_OPENAI_PLUGIN_NAME,
+    baseURL: options.openAIBaseUrl,
+    apiKey: options.openAIApiKey,
+  };
+  return {
+    // `openAICompatible` only resolves models out of the box, so embedders need
+    // an explicit resolver — otherwise every `embed`/`retrieve` call throws.
+    ai: genkit({plugins: [openAICompatible({
+      ...pluginOptions,
+      resolver: (client, actionType, actionName) =>
+        actionType === "embedder" ?
+          defineCompatOpenAIEmbedder({name: actionName, client, pluginOptions}) :
+          defineCompatOpenAIModel({
+            name: actionName,
+            client,
+            pluginOptions,
+            modelRef: compatOaiModelRef({name: actionName, namespace: CUSTOM_OPENAI_PLUGIN_NAME}),
+          }),
+    })]}),
+    embedder: embedderRef({name: `${CUSTOM_OPENAI_PLUGIN_NAME}/${EMBEDDING_MODEL}`}),
+  };
 }
 
 export function createContextStore(studyId: string): ContextStore {
@@ -60,8 +102,8 @@ export function createChatService(
   if (!options.ragEnabled) {
     return new ChatService(options.openAIApiKey, [], options.openAIBaseUrl);
   }
-  const ai = createAI(options);
-  const contextStore = new FirestoreContextStore(options.studyId, ai);
+  const {ai, embedder} = createAI(options);
+  const contextStore = new FirestoreContextStore(options.studyId, ai, embedder);
   return new ChatService(
     options.openAIApiKey,
     [new AgenticContextChatInterceptor(options.openAIApiKey, contextStore)],
@@ -70,9 +112,9 @@ export function createChatService(
 }
 
 export function createIndexingService(options: ServiceOptions): IndexingService {
-  const ai = createAI(options);
-  const contextStore = new FirestoreContextStore(options.studyId, ai);
-  const embeddingService = new GenkitEmbeddingService(ai);
+  const {ai, embedder} = createAI(options);
+  const contextStore = new FirestoreContextStore(options.studyId, ai, embedder);
+  const embeddingService = new GenkitEmbeddingService(ai, embedder);
   const plainTextExtractor = new PlainTextExtractor();
   const chunkingStrategy = new ComposedChunkingStrategy(
     new DispatchingTextExtractor({
