@@ -104,7 +104,7 @@ describe("mock OpenAI client", () => {
   });
 
   it("returns an OpenAI-compatible non-streaming completion", async () => {
-    const service = new ChatService("test-key", [], undefined, createMockOpenAIClient(response));
+    const service = new ChatService(createMockOpenAIClient(response));
 
     const result = JSON.parse(await service.chatNonStreaming({
       model: "test-model",
@@ -117,7 +117,7 @@ describe("mock OpenAI client", () => {
   });
 
   it("returns OpenAI-compatible streaming chunks", async () => {
-    const service = new ChatService("test-key", [], undefined, createMockOpenAIClient(response));
+    const service = new ChatService(createMockOpenAIClient(response));
     const chunks: string[] = [];
 
     await service.chatStreaming(
