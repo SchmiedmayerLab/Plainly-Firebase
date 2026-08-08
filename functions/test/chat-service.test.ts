@@ -37,7 +37,7 @@ describe("ChatService", () => {
         messages: [{role: "system", content: "Context"}, ...body.messages],
       }),
     };
-    const service = new ChatService("test-key", [interceptor], client);
+    const service = new ChatService(client, [interceptor]);
 
     const result = await service.chatNonStreaming({...request, stream: false});
 
@@ -61,7 +61,7 @@ describe("ChatService", () => {
         },
       },
     } as unknown as OpenAI;
-    const service = new ChatService("test-key", [], client);
+    const service = new ChatService(client);
     const chunks: string[] = [];
 
     await service.chatStreaming(
@@ -94,7 +94,7 @@ describe("ChatService", () => {
         },
       },
     } as unknown as OpenAI;
-    const service = new ChatService("test-key", [], client);
+    const service = new ChatService(client);
     const chunks: string[] = [];
 
     await service.chatStreaming(

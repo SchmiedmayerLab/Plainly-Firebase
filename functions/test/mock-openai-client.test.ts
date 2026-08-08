@@ -143,7 +143,7 @@ describe("mock OpenAI client", () => {
 
   it("does not split Unicode code points across streaming chunks", async () => {
     const unicodeResponse = "Plainly 🧠 response";
-    const service = new ChatService("test-key", [], createMockOpenAIClient(unicodeResponse));
+    const service = new ChatService(createMockOpenAIClient(unicodeResponse));
     const chunks: string[] = [];
 
     await service.chatStreaming(
@@ -166,7 +166,7 @@ describe("mock OpenAI client", () => {
   });
 
   it("accepts production-compatible array constraints", async () => {
-    const service = new ChatService("test-key", [], createMockOpenAIClient(response));
+    const service = new ChatService(createMockOpenAIClient(response));
 
     const result = await service.chatNonStreaming(requestWithArraySchema({
       minItems: 1,
@@ -183,7 +183,7 @@ describe("mock OpenAI client", () => {
     ["uniqueItems", "boolean"],
   ] as const) {
     it(`rejects a null ${keyword} constraint like OpenAI`, async () => {
-      const service = new ChatService("test-key", [], createMockOpenAIClient(response));
+      const service = new ChatService(createMockOpenAIClient(response));
 
       await assert.rejects(
         () => service.chatNonStreaming(requestWithArraySchema({[keyword]: null})),
@@ -199,7 +199,7 @@ describe("mock OpenAI client", () => {
   }
 
   it("rejects an empty enum like OpenAI", async () => {
-    const service = new ChatService("test-key", [], createMockOpenAIClient(response));
+    const service = new ChatService(createMockOpenAIClient(response));
 
     await assert.rejects(
       () => service.chatNonStreaming(requestWithArraySchema({
@@ -216,11 +216,7 @@ describe("mock OpenAI client", () => {
   });
 
   it("can return a production-shaped API failure", async () => {
-    const service = new ChatService(
-      "test-key",
-      [],
-      createMockOpenAIClient(response, {rejectRequest: true}),
-    );
+    const service = new ChatService(createMockOpenAIClient(response, {rejectRequest: true}));
 
     await assert.rejects(
       () => service.chatNonStreaming(requestWithArraySchema({minItems: 1, maxItems: 250, uniqueItems: true})),
@@ -229,11 +225,7 @@ describe("mock OpenAI client", () => {
   });
 
   it("can return a production-shaped API failure after streaming starts", async () => {
-    const service = new ChatService(
-      "test-key",
-      [],
-      createMockOpenAIClient(response, {rejectStreamAfterFirstChunk: true}),
-    );
+    const service = new ChatService(createMockOpenAIClient(response, {rejectStreamAfterFirstChunk: true}));
     const chunks: string[] = [];
 
     await assert.rejects(
