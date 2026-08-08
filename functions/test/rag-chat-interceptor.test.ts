@@ -55,7 +55,6 @@ describe("AgenticContextChatInterceptor", () => {
       },
     } as unknown as OpenAI;
     const interceptor = new AgenticContextChatInterceptor(
-      "test-key",
       contextStore,
       client,
     );
@@ -98,7 +97,6 @@ describe("AgenticContextChatInterceptor", () => {
       },
     } as unknown as OpenAI;
     const interceptor = new AgenticContextChatInterceptor(
-      "test-key",
       contextStore,
       client,
     );

@@ -23,9 +23,8 @@ export type OnChunk = (data: string) => Promise<boolean>;
 
 export class ChatService {
   constructor(
-    apiKey: string,
-    private readonly interceptors: ChatInterceptor[],
-    private readonly openai: OpenAI = new OpenAI({apiKey}),
+    private readonly openai: OpenAI,
+    readonly interceptors: ChatInterceptor[] = [],
   ) {}
 
   async chatNonStreaming(body: ChatCompletionCreateParamsNonStreaming): Promise<string> {

@@ -13,7 +13,12 @@ import {createChatService} from "../services/create-services";
 import {ChatBody} from "../services/chat/chat-service";
 
 export const chat = onCall(
-  {secrets: [Secrets.OPENAI_API_KEY], serviceAccount: SERVICE_ACCOUNT, timeoutSeconds: 540, memory: "512MiB"},
+  {
+    secrets: [Secrets.OPENAI_API_KEY, Secrets.OPENAI_BASE_URL],
+    serviceAccount: SERVICE_ACCOUNT,
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
   async (req, res): Promise<string | void> => {
     if (!req.auth?.token) {
       throw new HttpsError("unauthenticated", "User must be authenticated");
@@ -31,6 +36,7 @@ export const chat = onCall(
       const chatService = createChatService({
         studyId,
         openAIApiKey: Secrets.OPENAI_API_KEY.value(),
+        openAIBaseUrl: Secrets.OPENAI_BASE_URL.value(),
         ragEnabled,
         mockChatError: req.rawRequest.query.mockChatError === "true",
         mockChatErrorAfterChunk: req.rawRequest.query.mockChatErrorAfterChunk === "true",

@@ -6,8 +6,13 @@
 // SPDX-License-Identifier: MIT
 //
 
-import {genkit} from "genkit";
-import openAI from "@genkit-ai/compat-oai/openai";
+import {embedderRef, EmbedderReference, Genkit, genkit} from "genkit";
+import {
+  compatOaiModelRef,
+  defineCompatOpenAIEmbedder,
+  defineCompatOpenAIModel,
+  openAICompatible,
+} from "@genkit-ai/compat-oai";
 import {ChatService} from "./chat/chat-service";
 import {AgenticContextChatInterceptor} from "./chat/agentic-context-chat-interceptor";
 import {ComposedChunkingStrategy} from "./chunking/composed-chunking-strategy";
@@ -22,21 +27,71 @@ import {DefaultIndexingService} from "./indexing/default-indexing-service";
 import {SlidingWindowTextChunker} from "./chunking/text-chunking/sliding-window-text-chunker";
 import {emulatorMockChatResponse} from "../env";
 import {createMockOpenAIClient} from "./chat/mock-openai-client";
+import {openAI} from "@genkit-ai/compat-oai/openai";
+import {OpenAI} from "openai/client";
 
 export interface ServiceOptions {
   studyId: string;
   openAIApiKey: string;
+  openAIBaseUrl?: string;
   ragEnabled?: boolean;
   mockChatError?: boolean;
   mockChatErrorAfterChunk?: boolean;
 }
 
-function createAI(openAIApiKey: string) {
-  return genkit({plugins: [openAI({apiKey: openAIApiKey})]});
+const CUSTOM_OPENAI_PLUGIN_NAME = "customOpenAI";
+const EMBEDDING_MODEL = "text-embedding-ada-002";
+
+/**
+ * The Genkit instance together with the embedder reference valid for it.
+ *
+ * The reference must be created from the plugin that is actually registered:
+ * `openAI.embedder(...)` produces an `openai/...` reference, which no
+ * `openAICompatible` plugin can resolve.
+ */
+export interface AIContext {
+  ai: Genkit;
+  embedder: EmbedderReference;
+}
+
+export function createAI(options: ServiceOptions): AIContext {
+  if (!options.openAIBaseUrl) {
+    return {
+      ai: genkit({plugins: [openAI({apiKey: options.openAIApiKey})]}),
+      embedder: openAI.embedder(EMBEDDING_MODEL),
+    };
+  }
+
+  const pluginOptions = {
+    name: CUSTOM_OPENAI_PLUGIN_NAME,
+    baseURL: options.openAIBaseUrl,
+    apiKey: options.openAIApiKey,
+  };
+  return {
+    // `openAICompatible` only resolves models out of the box, so embedders need
+    // an explicit resolver — otherwise every `embed`/`retrieve` call throws.
+    ai: genkit({plugins: [openAICompatible({
+      ...pluginOptions,
+      resolver: (client, actionType, actionName) =>
+        actionType === "embedder" ?
+          defineCompatOpenAIEmbedder({name: actionName, client, pluginOptions}) :
+          defineCompatOpenAIModel({
+            name: actionName,
+            client,
+            pluginOptions,
+            modelRef: compatOaiModelRef({name: actionName, namespace: CUSTOM_OPENAI_PLUGIN_NAME}),
+          }),
+    })]}),
+    embedder: embedderRef({name: `${CUSTOM_OPENAI_PLUGIN_NAME}/${EMBEDDING_MODEL}`}),
+  };
 }
 
 export function createContextStore(studyId: string): ContextStore {
-  return new FirestoreContextStore(studyId, genkit({plugins: []}));
+  return new FirestoreContextStore(
+    studyId,
+    genkit({plugins: []}),
+    openAI.embedder(EMBEDDING_MODEL),
+  );
 }
 
 export function createChatService(
@@ -45,29 +100,28 @@ export function createChatService(
 ): ChatService {
   if (mockResponse !== undefined) {
     return new ChatService(
-      "plainly-emulator-key",
-      [],
       createMockOpenAIClient(mockResponse, {
         rejectRequest: options.mockChatError,
         rejectStreamAfterFirstChunk: options.mockChatErrorAfterChunk,
       }),
     );
   }
+  const client = new OpenAI({ baseURL: options.openAIBaseUrl, apiKey: options.openAIApiKey });
   if (!options.ragEnabled) {
-    return new ChatService(options.openAIApiKey, []);
+    return new ChatService(client);
   }
-  const ai = createAI(options.openAIApiKey);
-  const contextStore = new FirestoreContextStore(options.studyId, ai);
+  const {ai, embedder} = createAI(options);
+  const contextStore = new FirestoreContextStore(options.studyId, ai, embedder);
   return new ChatService(
-    options.openAIApiKey,
-    [new AgenticContextChatInterceptor(options.openAIApiKey, contextStore)],
+    client,
+    [new AgenticContextChatInterceptor(contextStore, client)],
   );
 }
 
 export function createIndexingService(options: ServiceOptions): IndexingService {
-  const ai = createAI(options.openAIApiKey);
-  const contextStore = new FirestoreContextStore(options.studyId, ai);
-  const embeddingService = new GenkitEmbeddingService(ai);
+  const {ai, embedder} = createAI(options);
+  const contextStore = new FirestoreContextStore(options.studyId, ai, embedder);
+  const embeddingService = new GenkitEmbeddingService(ai, embedder);
   const plainTextExtractor = new PlainTextExtractor();
   const chunkingStrategy = new ComposedChunkingStrategy(
     new DispatchingTextExtractor({
