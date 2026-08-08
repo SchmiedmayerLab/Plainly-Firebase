@@ -49,12 +49,12 @@ const EMBEDDING_MODEL = "text-embedding-ada-002";
  * `openAI.embedder(...)` produces an `openai/...` reference, which no
  * `openAICompatible` plugin can resolve.
  */
-interface AIContext {
+export interface AIContext {
   ai: Genkit;
   embedder: EmbedderReference;
 }
 
-function createAI(options: ServiceOptions): AIContext {
+export function createAI(options: ServiceOptions): AIContext {
   if (!options.openAIBaseUrl) {
     return {
       ai: genkit({plugins: [openAI({apiKey: options.openAIApiKey})]}),

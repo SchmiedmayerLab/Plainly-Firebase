@@ -14,10 +14,10 @@ import {ChatBody} from "../services/chat/chat-service";
 
 export const chat = onCall(
   {
-    secrets: [Secrets.OPENAI_API_KEY, Secrets.OPENAI_BASE_URL], 
-    serviceAccount: SERVICE_ACCOUNT, 
-    timeoutSeconds: 540, 
-    memory: "512MiB"
+    secrets: [Secrets.OPENAI_API_KEY, Secrets.OPENAI_BASE_URL],
+    serviceAccount: SERVICE_ACCOUNT,
+    timeoutSeconds: 540,
+    memory: "512MiB",
   },
   async (req, res): Promise<string | void> => {
     if (!req.auth?.token) {
