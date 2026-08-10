@@ -8,9 +8,7 @@ SPDX-License-Identifier: MIT
 
 -->
 
-Plainly Firebase Contributors
-=================================
-
+# Plainly Firebase Contributors
 * [Paul Johannes Kraft](https://github.com/pauljohanneskraft)
 * [Thomas Kaar](https://github.com/ThomasKaar)
 * [Lukas Kollmer](https://github.com/lukaskollmer)
