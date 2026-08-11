@@ -15,6 +15,9 @@ on:
 jobs:
   markdown_link_check:
     name: Markdown Link Check
+    permissions:
+      contents: read
+      pull-requests: read
     uses: SchmiedmayerLab/.github/.github/workflows/markdown-links.yml@v0.5
     with:
       runs_on_labels: '["ubuntu-latest"]'
