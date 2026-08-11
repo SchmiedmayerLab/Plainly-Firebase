@@ -71,11 +71,12 @@ jobs:
     permissions:
       contents: read
       checks: write
+      pull-requests: read
     secrets: inherit
   deployfirebase:
     name: Deploy Firebase Project
     needs: [buildandtest, determineenvironment, vars]
-    uses: SchmiedmayerLab/.github/.github/workflows/firebase-deploy.yml@v0.2
+    uses: SchmiedmayerLab/.github/.github/workflows/firebase-deploy.yml@v0.5
     permissions:
       contents: read
     with:
