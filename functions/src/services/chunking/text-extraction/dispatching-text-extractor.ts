@@ -7,7 +7,7 @@
 //
 
 import {extname} from "node:path";
-import {TextExtractor} from "./text-extractor";
+import {ExtractionResult, TextExtractor} from "./text-extractor";
 
 /**
  * Selects a {@link TextExtractor} based on the file extension of the input
@@ -18,7 +18,7 @@ export class DispatchingTextExtractor implements TextExtractor {
     private readonly extractors: Record<string, TextExtractor>,
   ) {}
 
-  async extract(filePath: string): Promise<string[]> {
+  async extract(filePath: string): Promise<ExtractionResult> {
     const ext = extname(filePath).toLowerCase();
     const extractor = this.extractors[ext];
 

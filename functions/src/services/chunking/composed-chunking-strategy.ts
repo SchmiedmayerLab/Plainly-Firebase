@@ -25,9 +25,9 @@ export class ComposedChunkingStrategy implements FileChunkingStrategy {
   ) {}
 
   async chunkFile(filePath: string): Promise<Chunk[]> {
-    const segments = await this.extractor.extract(filePath);
+    const {segments, metadata} = await this.extractor.extract(filePath);
     return segments.flatMap((segment) =>
-      this.chunker.chunk(segment).map((text) => ({text})),
+      this.chunker.chunk(segment).map((text) => ({text, metadata})),
     );
   }
 }

@@ -40,6 +40,7 @@ export class DefaultIndexingService implements IndexingService {
         chunks.map((chunk, i) => ({
           text: chunk.text,
           embedding: embeddings[i],
+          metadata: chunk.metadata,
         })),
       );
 
