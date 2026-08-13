@@ -10,7 +10,7 @@ import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
 import {ChatInterceptor} from "./chat-interceptor";
 import {ChatBody} from "./chat-service";
 import {ContextStore} from "../context/context-store";
-import {formatRetrievedDocuments} from "./format-retrieved-documents";
+import {RetrievedDocumentFormatter} from "./retrieved-document-formatter";
 
 const RAG_RETRIEVAL_LIMIT = 10;
 
@@ -23,6 +23,8 @@ const RAG_RETRIEVAL_LIMIT = 10;
  * logged and silently ignored so the chat can proceed without context.
  */
 export class RAGChatInterceptor implements ChatInterceptor {
+  private readonly formatter = new RetrievedDocumentFormatter();
+
   constructor(private readonly contextStore: ContextStore) {}
 
   async intercept(body: ChatBody): Promise<ChatBody> {
@@ -31,7 +33,7 @@ export class RAGChatInterceptor implements ChatInterceptor {
       if (!query) return body;
 
       const docs = await this.contextStore.retrieve(query, RAG_RETRIEVAL_LIMIT);
-      const ragContext = formatRetrievedDocuments(docs);
+      const ragContext = this.formatter.format(docs);
 
       if (!ragContext) {
         console.log("[RAG] No relevant context found");

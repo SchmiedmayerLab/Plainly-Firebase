@@ -8,12 +8,12 @@
 
 import assert from "node:assert/strict";
 import {describe, it} from "node:test";
-import {formatRetrievedDocuments} from "../src/services/chat/format-retrieved-documents";
+import {RetrievedDocumentFormatter} from "../src/services/chat/retrieved-document-formatter";
 import {RetrievedDocument} from "../src/services/context/context-store";
 
-describe("formatRetrievedDocuments", () => {
+describe("RetrievedDocumentFormatter", () => {
   it("returns an empty string for no documents", () => {
-    assert.equal(formatRetrievedDocuments([]), "");
+    assert.equal(new RetrievedDocumentFormatter().format([]), "");
   });
 
   it("falls back to the plain header when a document has no metadata", () => {
@@ -21,7 +21,10 @@ describe("formatRetrievedDocuments", () => {
       {text: "Some evidence", file: "notes.txt", distance: 0.2, chunkId: 0},
     ];
 
-    assert.equal(formatRetrievedDocuments(docs), "[Document: notes.txt | Chunk 0]\nSome evidence");
+    assert.equal(
+      new RetrievedDocumentFormatter().format(docs),
+      "[Document: notes.txt | Chunk 0]\nSome evidence",
+    );
   });
 
   it("includes only the configured metadata fields, in order", () => {
@@ -42,7 +45,7 @@ describe("formatRetrievedDocuments", () => {
     ];
 
     assert.equal(
-      formatRetrievedDocuments(docs),
+      new RetrievedDocumentFormatter().format(docs),
       "[Document: guideline.pdf | Title: Lumbar Fusion Outcomes | Author: J. Smith | " +
         "Publisher: Spine Journal | Year: 2021 | Chunk 4]\nFusion improves outcomes.",
     );
@@ -55,8 +58,26 @@ describe("formatRetrievedDocuments", () => {
     ];
 
     assert.equal(
-      formatRetrievedDocuments(docs),
+      new RetrievedDocumentFormatter().format(docs),
       "[Document: a.pdf | Title: A | Chunk 0]\nFirst\n\n---\n\n[Document: b.pdf | Chunk 1]\nSecond",
+    );
+  });
+
+  it("surfaces a caller-supplied subset of metadata fields instead of the default", () => {
+    const docs: RetrievedDocument[] = [
+      {
+        text: "Fusion improves outcomes.",
+        file: "guideline.pdf",
+        distance: 0.1,
+        chunkId: 4,
+        metadata: {title: "Lumbar Fusion Outcomes", subject: "Orthopedics"},
+      },
+    ];
+    const formatter = new RetrievedDocumentFormatter([{key: "subject", label: "Subject"}]);
+
+    assert.equal(
+      formatter.format(docs),
+      "[Document: guideline.pdf | Subject: Orthopedics | Chunk 4]\nFusion improves outcomes.",
     );
   });
 });
