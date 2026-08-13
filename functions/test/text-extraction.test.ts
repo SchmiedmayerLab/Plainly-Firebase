@@ -93,4 +93,22 @@ describe("PDFTextExtractor", () => {
 
     assert.equal(result.metadata, undefined);
   });
+
+  it("filters unsafe custom-metadata keys and trims whitespace-only values", () => {
+    const extractor = new PDFTextExtractor() as unknown as {
+      extractMetadata(info: Record<string, unknown>): Record<string, unknown> | undefined;
+    };
+
+    const metadata = extractor.extractMetadata({
+      Custom: {
+        ["__proto__"]: "evil",
+        Constructor: "also evil",
+        Publisher: "  Spine Journal  ",
+        Empty: "   ",
+      },
+    });
+
+    assert.deepEqual(metadata, {publisher: "Spine Journal"});
+    assert.equal(Object.getPrototypeOf(metadata), Object.prototype);
+  });
 });

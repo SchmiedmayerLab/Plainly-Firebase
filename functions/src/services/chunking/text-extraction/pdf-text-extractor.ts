@@ -26,6 +26,9 @@ const STANDARD_INFO_KEYS: {key: string; field: keyof DocumentMetadata}[] = [
   {key: "Producer", field: "producer"},
 ];
 
+/** Keys that would otherwise let an untrusted PDF's Info dictionary tamper with an object's prototype. */
+const UNSAFE_METADATA_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 /** Extracts text and Info-dictionary metadata from PDF files using unpdf. */
 export class PDFTextExtractor implements TextExtractor {
   async extract(filePath: string): Promise<ExtractionResult> {
@@ -62,8 +65,11 @@ export class PDFTextExtractor implements TextExtractor {
     const custom = info.Custom;
     if (custom && typeof custom === "object") {
       for (const [key, value] of Object.entries(custom as Record<string, unknown>)) {
-        if (value === undefined || value === null || value === "") continue;
-        metadata[this.lowerFirst(key)] = value;
+        const normalizedKey = this.lowerFirst(key);
+        if (UNSAFE_METADATA_KEYS.has(normalizedKey)) continue;
+        const normalizedValue = typeof value === "string" ? value.trim() : value;
+        if (normalizedValue === undefined || normalizedValue === null || normalizedValue === "") continue;
+        metadata[normalizedKey] = normalizedValue;
       }
     }
 
