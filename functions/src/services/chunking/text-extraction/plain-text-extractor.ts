@@ -7,13 +7,13 @@
 //
 
 import {readFile} from "node:fs/promises";
-import {TextExtractor} from "./text-extractor";
+import {ExtractionResult, TextExtractor} from "./text-extractor";
 
 /** Extracts text from plain-text files (e.g. .txt, .md, .rtf). */
 export class PlainTextExtractor implements TextExtractor {
-  async extract(filePath: string): Promise<string[]> {
+  async extract(filePath: string): Promise<ExtractionResult> {
     const content = await readFile(filePath, "utf-8");
-    return [this.clean(content)];
+    return {segments: [this.clean(content)]};
   }
 
   private clean(raw: string): string {

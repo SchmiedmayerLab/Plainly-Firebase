@@ -9,7 +9,8 @@
 import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
 import {ChatInterceptor} from "./chat-interceptor";
 import {ChatBody} from "./chat-service";
-import {ContextStore, RetrievedDocument} from "../context/context-store";
+import {ContextStore} from "../context/context-store";
+import {formatRetrievedDocuments} from "./format-retrieved-documents";
 
 const RAG_RETRIEVAL_LIMIT = 10;
 
@@ -30,7 +31,7 @@ export class RAGChatInterceptor implements ChatInterceptor {
       if (!query) return body;
 
       const docs = await this.contextStore.retrieve(query, RAG_RETRIEVAL_LIMIT);
-      const ragContext = this.formatDocuments(docs);
+      const ragContext = formatRetrievedDocuments(docs);
 
       if (!ragContext) {
         console.log("[RAG] No relevant context found");
@@ -86,12 +87,5 @@ export class RAGChatInterceptor implements ChatInterceptor {
       })
       .filter(Boolean)
       .join(" ");
-  }
-
-  private formatDocuments(docs: RetrievedDocument[]): string {
-    if (docs.length === 0) return "";
-    return docs
-      .map((doc) => `[Document: ${doc.file} | Chunk ${doc.chunkId}]\n${doc.text}`)
-      .join("\n\n---\n\n");
   }
 }

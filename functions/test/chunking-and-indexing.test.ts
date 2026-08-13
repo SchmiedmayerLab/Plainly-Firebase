@@ -19,7 +19,7 @@ import {DefaultIndexingService} from "../src/services/indexing/default-indexing-
 describe("ComposedChunkingStrategy", () => {
   it("chunks every extracted segment in document order", async () => {
     const extractor: TextExtractor = {
-      extract: async () => ["first", "second"],
+      extract: async () => ({segments: ["first", "second"]}),
     };
     const chunker: TextChunker = {
       chunk: (text) => [text, `${text}-continued`],
@@ -29,11 +29,26 @@ describe("ComposedChunkingStrategy", () => {
       .chunkFile("document.txt");
 
     assert.deepEqual(chunks, [
-      {text: "first"},
-      {text: "first-continued"},
-      {text: "second"},
-      {text: "second-continued"},
+      {text: "first", metadata: undefined},
+      {text: "first-continued", metadata: undefined},
+      {text: "second", metadata: undefined},
+      {text: "second-continued", metadata: undefined},
     ]);
+  });
+
+  it("attaches the extracted document metadata to every chunk", async () => {
+    const metadata = {title: "Lumbar Fusion Outcomes", author: "J. Smith"};
+    const extractor: TextExtractor = {
+      extract: async () => ({segments: ["first"], metadata}),
+    };
+    const chunker: TextChunker = {
+      chunk: (text) => [text],
+    };
+
+    const chunks = await new ComposedChunkingStrategy(extractor, chunker)
+      .chunkFile("document.pdf");
+
+    assert.deepEqual(chunks, [{text: "first", metadata}]);
   });
 });
 
@@ -71,9 +86,38 @@ describe("DefaultIndexingService", () => {
     assert.deepEqual(result, {success: true, chunksIndexed: 2});
     assert.equal(storedFilename, "study.txt");
     assert.deepEqual(storedChunks, [
-      {text: "first", embedding: [1, 2]},
-      {text: "second", embedding: [3, 4]},
+      {text: "first", embedding: [1, 2], metadata: undefined},
+      {text: "second", embedding: [3, 4], metadata: undefined},
     ]);
+  });
+
+  it("passes each chunk's metadata through to the stored embedding", async (context) => {
+    context.mock.method(console, "log", () => undefined);
+    const metadata = {title: "Lumbar Fusion Outcomes"};
+    const metadataChunkingStrategy: FileChunkingStrategy = {
+      chunkFile: async () => [{text: "first", metadata}],
+    };
+    const singleEmbeddingService: EmbeddingService = {
+      embed: async () => embeddings[0],
+      embedBatch: async () => [embeddings[0]],
+    };
+    let storedChunks: ChunkEmbedding[] | undefined;
+    const contextStore: ContextStore = {
+      retrieve: async () => [],
+      delete: async () => undefined,
+      store: async (_filename, indexedChunks) => {
+        storedChunks = indexedChunks;
+      },
+    };
+    const service = new DefaultIndexingService(
+      metadataChunkingStrategy,
+      singleEmbeddingService,
+      contextStore,
+    );
+
+    await service.index("/tmp/upload", "study.pdf");
+
+    assert.deepEqual(storedChunks, [{text: "first", embedding: [1, 2], metadata}]);
   });
 
   it("does not store partially embedded documents", async (context) => {

@@ -10,7 +10,8 @@ import OpenAI from "openai";
 import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
 import {ChatInterceptor} from "./chat-interceptor";
 import {ChatBody} from "./chat-service";
-import {ContextStore, RetrievedDocument} from "../context/context-store";
+import {ContextStore} from "../context/context-store";
+import {formatRetrievedDocuments} from "./format-retrieved-documents";
 import {z} from "genkit";
 import {VERBOSE_LOGGING} from "../../env";
 
@@ -117,7 +118,7 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
       );
       const ragDocs =
         docs.flat().sort((a, b) => (a.distance ?? 1) - (b.distance ?? 1)).slice(0, RAG_RETRIEVAL_LIMIT);
-      const ragContext = this.formatDocuments(ragDocs);
+      const ragContext = formatRetrievedDocuments(ragDocs);
 
       if (!ragContext) {
         console.log("[AgenticRAG] No relevant context found");
@@ -220,12 +221,5 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
       })
       .filter(Boolean)
       .join(" ");
-  }
-
-  private formatDocuments(docs: RetrievedDocument[]): string {
-    if (docs.length === 0) return "";
-    return docs
-      .map((doc) => `[Document: ${doc.file} | Chunk ${doc.chunkId}]\n${doc.text}`)
-      .join("\n\n---\n\n");
   }
 }

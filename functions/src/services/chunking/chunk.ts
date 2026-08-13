@@ -6,8 +6,10 @@
 // SPDX-License-Identifier: MIT
 //
 
+import {DocumentMetadata} from "./text-extraction/document-metadata";
+
 /** A text chunk extracted from a document. */
 export interface Chunk {
   text: string;
-  metadata?: Record<string, unknown>;
+  metadata?: DocumentMetadata;
 }

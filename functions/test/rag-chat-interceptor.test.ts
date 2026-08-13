@@ -69,6 +69,43 @@ describe("AgenticContextChatInterceptor", () => {
     );
   });
 
+  it("includes document metadata in the injected chunk header", async () => {
+    const contextStore: ContextStore = {
+      retrieve: async () => [{
+        text: "Fusion improves outcomes.",
+        file: "guideline.pdf",
+        distance: 0.1,
+        chunkId: 4,
+        metadata: {title: "Lumbar Fusion Outcomes", author: "J. Smith", year: 2021},
+      }],
+      store: async () => undefined,
+      delete: async () => undefined,
+    };
+    const client = {
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              message: {
+                tool_calls: [
+                  {type: "function", function: {name: "retrieve_context", arguments: '{"query":"fusion"}'}},
+                ],
+              },
+            }],
+          }),
+        },
+      },
+    } as unknown as OpenAI;
+    const interceptor = new AgenticContextChatInterceptor(contextStore, client);
+
+    const result = await interceptor.intercept(request);
+
+    assert.match(
+      String(result.messages.at(-2)?.content),
+      /\[Document: guideline\.pdf \| Title: Lumbar Fusion Outcomes \| Author: J\. Smith \| Year: 2021 \| Chunk 4\]/,
+    );
+  });
+
   it("continues without context when a generated query is invalid", async (context) => {
     context.mock.method(console, "error", () => undefined);
     context.mock.method(console, "warn", () => undefined);

@@ -6,17 +6,21 @@
 // SPDX-License-Identifier: MIT
 //
 
+import {DocumentMetadata} from "../chunking/text-extraction/document-metadata";
+
 /** A document retrieved from the context store. */
 export interface RetrievedDocument {
   text: string;
   file: string;
   distance: number | null;
   chunkId: number;
+  metadata?: DocumentMetadata;
 }
 
 export interface ChunkEmbedding {
   text: string;
   embedding: number[] | null;
+  metadata?: DocumentMetadata;
 }
 
 export interface ContextStore {

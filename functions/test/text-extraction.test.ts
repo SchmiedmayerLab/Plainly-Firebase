@@ -12,8 +12,11 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {after, before, describe, it} from "node:test";
 import {DispatchingTextExtractor} from "../src/services/chunking/text-extraction/dispatching-text-extractor";
+import {PDFTextExtractor} from "../src/services/chunking/text-extraction/pdf-text-extractor";
 import {PlainTextExtractor} from "../src/services/chunking/text-extraction/plain-text-extractor";
 import {TextExtractor} from "../src/services/chunking/text-extraction/text-extractor";
+
+const fixturePath = (name: string) => join(__dirname, "fixtures", name);
 
 let testDirectory: string;
 
@@ -32,7 +35,7 @@ describe("text extraction", () => {
 
     const result = await new PlainTextExtractor().extract(filePath);
 
-    assert.deepEqual(result, ["Full-width: A value here\n\nNext"]);
+    assert.deepEqual(result, {segments: ["Full-width: A value here\n\nNext"]});
   });
 
   it("dispatches case-insensitive file extensions to the configured extractor", async () => {
@@ -40,12 +43,12 @@ describe("text extraction", () => {
     const extractor: TextExtractor = {
       extract: async (filePath) => {
         receivedPath = filePath;
-        return ["content"];
+        return {segments: ["content"]};
       },
     };
     const dispatcher = new DispatchingTextExtractor({".txt": extractor});
 
-    assert.deepEqual(await dispatcher.extract("Study.TXT"), ["content"]);
+    assert.deepEqual(await dispatcher.extract("Study.TXT"), {segments: ["content"]});
     assert.equal(receivedPath, "Study.TXT");
   });
 
@@ -56,5 +59,38 @@ describe("text extraction", () => {
       dispatcher.extract("archive.zip"),
       /No extractor registered for file extension "\.zip"/,
     );
+  });
+});
+
+describe("PDFTextExtractor", () => {
+  it("extracts text and standard + custom Info dictionary metadata", async () => {
+    const result = await new PDFTextExtractor().extract(fixturePath("with-metadata.pdf"));
+
+    assert.equal(result.segments.length, 1);
+    assert.match(result.segments[0], /Hello PDF/);
+    assert.deepEqual(result.metadata, {
+      title: "Lumbar Fusion Outcomes",
+      author: "J. Smith",
+      subject: "Orthopedics",
+      keywords: "fusion lumbar",
+      creator: "pdf-lib (https://github.com/Hopding/pdf-lib)",
+      producer: "pdf-lib (https://github.com/Hopding/pdf-lib)",
+      creationDate: "2021-03-15T00:00:00.000Z",
+      modDate: "2021-06-01T00:00:00.000Z",
+      publisher: "Spine Journal",
+      year: 2021,
+    });
+  });
+
+  it("prefers an explicit custom year over the one derived from CreationDate", async () => {
+    const result = await new PDFTextExtractor().extract(fixturePath("explicit-year.pdf"));
+
+    assert.equal(result.metadata?.year, 2019);
+  });
+
+  it("returns undefined metadata for a PDF with an empty Info dictionary", async () => {
+    const result = await new PDFTextExtractor().extract(fixturePath("no-metadata.pdf"));
+
+    assert.equal(result.metadata, undefined);
   });
 });
