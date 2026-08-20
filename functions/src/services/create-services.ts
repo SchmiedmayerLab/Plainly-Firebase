@@ -26,7 +26,7 @@ import {IndexingService} from "./indexing/indexing-service";
 import {DefaultIndexingService} from "./indexing/default-indexing-service";
 import {SlidingWindowTextChunker} from "./chunking/text-chunking/sliding-window-text-chunker";
 import {emulatorMockChatResponse} from "../env";
-import {createMockOpenAIClient} from "./chat/mock-openai-client";
+import {createMockOpenAIClient, MockOpenAIClientOptions} from "./chat/mock-openai-client";
 import {openAI} from "@genkit-ai/compat-oai/openai";
 import {OpenAI} from "openai/client";
 
@@ -35,9 +35,22 @@ export interface ServiceOptions {
   openAIApiKey: string;
   openAIBaseUrl?: string;
   ragEnabled?: boolean;
-  mockChatError?: boolean;
-  mockChatErrorAfterChunk?: boolean;
+  /** The behaviour the emulator should stand in for, named by one of `MOCK_SCENARIOS`. */
+  mockScenario?: string;
 }
+
+/**
+ * A path the deployed backend only reaches by failing, which the emulator can produce on demand.
+ *
+ * One at a time: each describes a whole run, so combining two would describe neither.
+ */
+const MOCK_SCENARIOS = {
+  chatError: {rejectRequest: true},
+  chatErrorAfterFirstChunk: {rejectStreamAfterFirstChunk: true},
+  responseStreamingUnsupported: {rejectStreamingRequest: true},
+  incrementalResponseState: {validateResponseState: true},
+  responseToolCall: {returnFunctionCall: true},
+} as const satisfies Record<string, MockOpenAIClientOptions>;
 
 const CUSTOM_OPENAI_PLUGIN_NAME = "customOpenAI";
 const EMBEDDING_MODEL = "text-embedding-ada-002";
@@ -99,23 +112,51 @@ export function createChatService(
   mockResponse = emulatorMockChatResponse(),
 ): ChatService {
   if (mockResponse !== undefined) {
-    return new ChatService(
-      createMockOpenAIClient(mockResponse, {
-        rejectRequest: options.mockChatError,
-        rejectStreamAfterFirstChunk: options.mockChatErrorAfterChunk,
-      }),
-    );
+    return new ChatService(createMockOpenAIClient(mockResponse, mockScenarioOptions(options.mockScenario)));
   }
-  const client = new OpenAI({ baseURL: options.openAIBaseUrl, apiKey: options.openAIApiKey });
+  // A separate unstreamed request handles gateways without Responses streaming;
+  // SDK retries would only delay that fallback.
+  const client = new OpenAI({
+    baseURL: options.openAIBaseUrl,
+    apiKey: options.openAIApiKey,
+  });
+  const responsesStreamingSupported = supportsResponsesStreaming();
   if (!options.ragEnabled) {
-    return new ChatService(client);
+    return new ChatService(client, [], responsesStreamingSupported);
   }
   const {ai, embedder} = createAI(options);
   const contextStore = new FirestoreContextStore(options.studyId, ai, embedder);
   return new ChatService(
     client,
     [new AgenticContextChatInterceptor(contextStore, client)],
+    responsesStreamingSupported,
   );
+}
+
+/**
+ * Resolves a scenario name into the behaviour the mock should stand in for.
+ *
+ * An unknown name is an error rather than a default: a test that asked for a scenario the emulator does
+ * not have would otherwise pass against ordinary behaviour and prove nothing.
+ */
+function mockScenarioOptions(scenario: string | undefined): MockOpenAIClientOptions {
+  if (scenario === undefined) {
+    return {};
+  }
+  if (!(scenario in MOCK_SCENARIOS)) {
+    throw new Error(`Unknown Firebase mock scenario '${scenario}'.`);
+  }
+  return MOCK_SCENARIOS[scenario as keyof typeof MOCK_SCENARIOS];
+}
+
+/** Returns whether the configured endpoint should receive streamed Responses requests. */
+export function supportsResponsesStreaming(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const configured = environment.OPENAI_RESPONSES_STREAMING_SUPPORTED?.trim().toLowerCase();
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+  return true;
 }
 
 export function createIndexingService(options: ServiceOptions): IndexingService {

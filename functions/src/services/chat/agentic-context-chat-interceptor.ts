@@ -6,19 +6,25 @@
 // SPDX-License-Identifier: MIT
 //
 
-import OpenAI from "openai";
-import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
-import {ChatInterceptor} from "./chat-interceptor";
-import {ChatBody} from "./chat-service";
-import {ContextStore} from "../context/context-store";
-import {RetrievedDocumentFormatter} from "./retrieved-document-formatter";
 import {z} from "genkit";
+import OpenAI from "openai";
+import {
+  FunctionTool,
+  ResponseFunctionToolCall,
+  ResponseInput,
+} from "openai/resources/responses/responses";
 import {VERBOSE_LOGGING} from "../../env";
+import {ContextStore} from "../context/context-store";
+import {ChatInterceptor} from "./chat-interceptor";
+import {ResponseBody} from "./chat-service";
+import {RetrievedDocumentFormatter} from "./retrieved-document-formatter";
 
 const RAG_QUERY_PROMPT = `
 You are a context retrieval assistant for SpineAI, a patient-facing spine health assistant.
 Based on the full conversation, determine what information needs to be looked up in the
-knowledge base to answer the user's last message.
+knowledge base to answer the active unresolved user request. The current input may be a
+tool result rather than a new user message; in that case, continue serving the user request
+that led to the tool call.
 
 The knowledge base contains medical studies, clinical guidelines, and patient-education
 material about spine conditions and treatment.
@@ -50,36 +56,27 @@ generic anatomy background, unless the patient specifically asked about anatomy.
 
 const RAG_RETRIEVAL_LIMIT = 10;
 
-const RETRIEVE_CONTEXT_TOOL: OpenAI.ChatCompletionTool = {
+const RETRIEVE_CONTEXT_TOOL: FunctionTool = {
   type: "function",
-  function: {
-    name: "retrieve_context",
-    description:
-      "Retrieve relevant context from the knowledge base using a search query.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "The search query to find relevant context.",
-        },
+  name: "retrieve_context",
+  description:
+    "Retrieve relevant context from the knowledge base using a search query.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "The search query to find relevant context.",
       },
-      required: ["query"],
     },
+    required: ["query"],
   },
+  strict: false,
 };
 
 /**
- * Intercepts chat requests by first running an internal non-streaming LLM call
- * to determine an optimal RAG query, then injecting the retrieved context as a
- * system message before the last user message.
- *
- * Unlike {@link RAGChatInterceptor} which uses the last user message verbatim,
- * this interceptor lets the model reformulate the query from the full
- * conversation history for higher-quality retrieval.
- *
- * Failures at any step are logged and silently ignored so the chat can proceed
- * without context.
+ * Uses a non-streaming Responses API tool call to formulate retrieval queries,
+ * then adds the retrieved evidence to the request's transient instructions.
  */
 export class AgenticContextChatInterceptor implements ChatInterceptor {
   private readonly formatter = new RetrievedDocumentFormatter();
@@ -89,20 +86,19 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
     private readonly openai: OpenAI,
   ) {}
 
-  async intercept(body: ChatBody): Promise<ChatBody> {
+  async intercept(body: ResponseBody): Promise<ResponseBody> {
+    // The client already decides this by way of `ragEnabled`, and is checked again here: a summary that
+    // feeds the study report must be of the record it was given, never of retrieved literature, and that
+    // is worth holding true even if a request says otherwise.
+    if (!hasStudyChatTool(body)) {
+      return body;
+    }
     try {
-      const lastMessage = body.messages.at(-1);
-      if (lastMessage?.role !== "user") {
+      if (!hasCurrentInput(body.input)) {
         console.warn(
-          "[AgenticRAG] Last message is not from user, skipping context injection",
+          "[AgenticRAG] Request has no current input; skipping context injection",
         );
         return body;
-      }
-
-      if (VERBOSE_LOGGING) {
-        for (const msg of body.messages) {
-          console.log(`[AgenticRAG] message: ${JSON.stringify(msg, null, 2)}`);
-        }
       }
 
       const queries = await this.determineQueries(body);
@@ -112,14 +108,16 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
       }
 
       if (VERBOSE_LOGGING) {
-        console.log(`[AgenticRAG] Using queries: [${queries.map((query) => `"${query}"`).join(", ")}]`);
+        console.log(`[AgenticRAG] Generated ${queries.length} retrieval query or queries`);
       }
 
       const docs = await Promise.all(
-        queries.map((q) => this.contextStore.retrieve(q, RAG_RETRIEVAL_LIMIT)),
+        queries.map((query) => this.contextStore.retrieve(query, RAG_RETRIEVAL_LIMIT)),
       );
-      const ragDocs =
-        docs.flat().sort((a, b) => (a.distance ?? 1) - (b.distance ?? 1)).slice(0, RAG_RETRIEVAL_LIMIT);
+      const ragDocs = docs
+        .flat()
+        .sort((lhs, rhs) => (lhs.distance ?? 1) - (rhs.distance ?? 1))
+        .slice(0, RAG_RETRIEVAL_LIMIT);
       const ragContext = this.formatter.format(ragDocs);
 
       if (!ragContext) {
@@ -127,101 +125,79 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
         return body;
       }
 
-      const ragMessage: ChatCompletionMessageParam = {
-        role: "system",
-        content: `[Retrieved Context from Knowledge Base]:\n${ragContext}`,
+      const contextInstructions = `[Retrieved Context from Knowledge Base]:\n${ragContext}`;
+      return {
+        ...body,
+        instructions: [body.instructions, contextInstructions]
+          .filter((part): part is string => typeof part === "string" && part.length > 0)
+          .join("\n\n"),
       };
-
-      if (VERBOSE_LOGGING) {
-        console.log(`[AgenticRAG] Injecting RAG context message before last user message:\n\n${ragMessage.content}`);
-      }
-
-      const newMessages = [
-        ...body.messages.slice(0, -1),
-        ragMessage,
-        ...body.messages.slice(-1),
-      ];
-      return {...body, messages: newMessages};
     } catch (error) {
       console.error("[AgenticRAG] Error during context injection:", error);
-      return body;
+      throw new Error(
+        "The study knowledge base could not be retrieved.",
+        {cause: error},
+      );
     }
   }
 
-  private async determineQueries(body: ChatBody): Promise<string[]> {
-    const messages = this.buildInternalMessages(body.messages);
-
-    const response = await this.openai.chat.completions.create({
+  private async determineQueries(body: ResponseBody): Promise<string[]> {
+    const response = await this.openai.responses.create({
       model: body.model,
-      messages,
+      input: body.input,
+      previous_response_id: body.previous_response_id,
+      instructions: [
+        RAG_QUERY_PROMPT,
+        ...(body.instructions ?
+          ["", `Original system instructions: """${body.instructions}"""`] :
+          []),
+      ].join("\n"),
       tools: [RETRIEVE_CONTEXT_TOOL],
-      tool_choice: {type: "function", function: {name: "retrieve_context"}},
+      tool_choice: {type: "function", name: "retrieve_context"},
+      store: false,
       stream: false,
     });
 
-    const toolCalls = response.choices.flatMap((choice) => choice.message?.tool_calls ?? []).filter(
-      (tc) => tc.type === "function" && tc.function.name === "retrieve_context",
-    ) as OpenAI.ChatCompletionMessageFunctionToolCall[];
+    const toolCalls = response.output.filter(
+      (item): item is ResponseFunctionToolCall =>
+        item.type === "function_call" && item.name === "retrieve_context",
+    );
 
     if (toolCalls.length === 0) {
-      console.warn("[AgenticRAG] No retrieve_context tool call in response");
-      return [];
+      throw new Error("The retrieval planner did not return a context query.");
     }
 
     try {
-      const parsedArguments = z.object({query: z.string()}).array()
-        .parse(toolCalls.map((tc) => JSON.parse(tc.function.arguments)));
-      return parsedArguments.map((args) => args.query);
+      const parsedArguments = z.object({query: z.string().trim().min(1).max(500)}).array()
+        .parse(toolCalls.map((toolCall) => JSON.parse(toolCall.arguments)));
+      return [...new Set(parsedArguments.map((arguments_) => arguments_.query))]
+        .slice(0, 3);
     } catch (error) {
       console.error(
         "[AgenticRAG] Error parsing tool call arguments:",
         error,
-        "Raw arguments:",
-        toolCalls.map((tc) => tc.function.arguments),
       );
-      return [];
+      throw new Error("The retrieval planner returned an invalid context query.", {
+        cause: error,
+      });
     }
   }
+}
 
-  private buildInternalMessages(
-    messages: ChatCompletionMessageParam[],
-  ): ChatCompletionMessageParam[] {
-    const firstSystemIndex = messages.findIndex((m) => m.role === "system");
-    const originalSystemContent =
-      firstSystemIndex >= 0 ?
-        this.extractTextContent(messages[firstSystemIndex].content) :
-        null;
+function hasStudyChatTool(body: ResponseBody): boolean {
+  return body.tools?.some(
+    (tool) => tool.type === "function" && tool.name === "get_resources",
+  ) ?? false;
+}
 
-    const adaptedSystemPrompt = [
-      RAG_QUERY_PROMPT,
-      ...(originalSystemContent ?
-        ["", `Original system instructions: """${originalSystemContent}"""`] :
-        []),
-    ].join("\n");
-
-    const adaptedSystemMessage: ChatCompletionMessageParam = {
-      role: "system",
-      content: adaptedSystemPrompt,
-    };
-
-    // Replace the first system message (or prepend one), keep remaining non-tool messages
-    return [...messages.slice(0, firstSystemIndex), adaptedSystemMessage, ...messages.slice(firstSystemIndex + 1)];
+function hasCurrentInput(input: string | ResponseInput | undefined): boolean {
+  if (typeof input === "string") {
+    return input.trim().length > 0;
   }
-
-  private extractTextContent(
-    content: ChatCompletionMessageParam["content"],
-  ): string {
-    if (typeof content === "string") return content;
-    if (!content) return "";
-    return content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (typeof part === "object" && part !== null && "text" in part) {
-          return typeof part.text === "string" ? part.text : "";
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join(" ");
+  const latestInput = input?.at(-1);
+  if (typeof latestInput !== "object" || latestInput === null) {
+    return false;
   }
+  return ("role" in latestInput && latestInput.role === "user") ||
+    ("type" in latestInput && latestInput.type === "function_call_output");
 }

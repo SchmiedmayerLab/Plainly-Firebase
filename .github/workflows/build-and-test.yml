@@ -101,5 +101,7 @@ jobs:
           PLAINLY_MOCK_CHAT_RESPONSE: Plainly Firebase integration response.
       - name: Build Web Client
         run: npm --prefix web run build
+      - name: Test Web Client
+        run: npm --prefix web test
     permissions:
       contents: read

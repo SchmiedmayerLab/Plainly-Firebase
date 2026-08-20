@@ -27,7 +27,7 @@ This repository provides an authenticated chat service, study-specific retrieval
 
 The backend includes:
 
-- An authenticated Firebase callable function that accepts OpenAI chat-completion payloads.
+- An authenticated Firebase callable function that accepts OpenAI Responses API payloads.
 - Optional RAG using study-specific documents and Firestore vector search.
 - Storage triggers that index uploaded PDF, plain-text, and Markdown documents.
 - Automatic removal of indexed context when a source document is deleted.
@@ -38,14 +38,18 @@ The backend includes:
 ```mermaid
 flowchart LR
     A["Plainly iOS or web client"] -->|"Authenticated callable request"| B["chat"]
-    B --> C["OpenAI chat completion"]
+    B --> C["Responses API"]
     B -->|"RAG enabled"| D["Agentic context retrieval"]
     D --> E["Firestore vector index<br/>studies/{studyId}/embeddings"]
     F["Cloud Storage<br/>studies/{studyId}/rag_files/{file}"] --> G["Index and deletion triggers"]
     G --> E
 ```
 
-The `chat` function requires Firebase authentication and a `studyId` query parameter. Set `ragEnabled=true` to retrieve study-specific context before generating a response. Streaming and non-streaming chat-completion payloads are supported.
+The `chat` function requires Firebase authentication and a `studyId` query parameter. Set `ragEnabled=true` to retrieve study-specific context before generating a response. Streaming and non-streaming Responses API payloads are supported. If the Stanford gateway rejects streaming with HTTP 500 before emitting any event, the backend retries the same intercepted request once without streaming and adapts the result into canonical Responses events. It never replays a request after the gateway has emitted a response identifier or other event.
+
+The endpoint accepts only Plainly's configured model identifiers and client-side function tools; server-executed tools, background jobs, conversations, file inputs, and remote images are rejected. The app disables participant attachments, while the endpoint retains a bounded inline JPEG/PNG path for study-authored image questionnaires. The backend enforces stored response state because clients use `previous_response_id` for multi-turn conversations. Before any response identifier is returned, its SHA-256 digest is bound to the authenticated Firebase user and study in a server-only Firestore collection. Unknown, expired, cross-user, and cross-study continuations are rejected, and the ownership records expire after 30 days.
+
+Stored provider responses may have their own retention period. Each deployment must verify that the gateway's response-retention and deletion policies match the approved consent, study protocol, and Stanford data-handling requirements before launch.
 
 Documents uploaded to `studies/{studyId}/rag_files/{file}` are extracted, chunked, embedded, and stored in `studies/{studyId}/embeddings`. Supported content types are PDF, plain text, and Markdown. Deleting a source document removes its indexed chunks.
 
@@ -56,7 +60,7 @@ Documents uploaded to `studies/{studyId}/rag_files/{file}` are extracted, chunke
 - [Node.js 24](https://nodejs.org/)
 - [Firebase CLI](https://firebase.google.com/docs/cli)
 - A Firebase project with Authentication, Functions, Firestore, and Storage
-- An OpenAI API key
+- An OpenAI-compatible API key
 
 ### Configure Local Secrets
 
@@ -66,11 +70,11 @@ Create the local Functions secret file from the provided example:
 cp functions/.secret.local.example functions/.secret.local
 ```
 
-Replace the placeholder in `functions/.secret.local` with a development `OPENAI_API_KEY`. Never commit this file.
+Replace the placeholder in `functions/.secret.local` with a development `OPENAI_API_KEY`. The backend defaults to Stanford's production AI API gateway. Never commit this file.
 
 ### Run the Backend
 
-Install the dependencies and start the Authentication and Functions emulators:
+Install the dependencies and start the Authentication, Functions, and Firestore emulators:
 
 ```bash
 npm --prefix functions install
@@ -81,12 +85,12 @@ To include the Storage emulator for document-indexing work, run:
 
 ```bash
 npm --prefix functions run build
-firebase emulators:start --only auth,functions,storage
+firebase emulators:start --only auth,functions,firestore,storage
 ```
 
 For deterministic client end-to-end tests, set `PLAINLY_MOCK_CHAT_RESPONSE`
 before starting the emulator. The Functions emulator then returns that text as
-an OpenAI-compatible completion without making an external API request. This
+an OpenAI-compatible response without making an external API request. This
 override is ignored outside the Firebase emulator.
 
 ### Run the Web Client
@@ -98,7 +102,7 @@ npm --prefix web install
 npm --prefix web run dev
 ```
 
-The web client connects to the local Authentication and Functions emulators and uses mock FHIR tool responses. Its default study identifier is `edu.stanford.plainly.spineAI`.
+The web client connects to the local Authentication and Functions emulators and uses mock FHIR tool responses. Its default study identifier is `edu.stanford.plainly.spineAI`, and its default model is `gpt-5.5`.
 
 ### Validate Changes
 
@@ -109,6 +113,7 @@ npm --prefix functions run test:coverage
 firebase emulators:exec --project demo-plainly --only auth,functions,firestore,storage \
   "npm --prefix functions run test:integration"
 npm --prefix web run build
+npm --prefix web test
 npm --prefix web run lint
 ```
 
@@ -116,13 +121,16 @@ npm --prefix web run lint
 
 | Name | Location | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | Firebase Functions secret | Generates chat completions and document embeddings. |
+| `OPENAI_API_KEY` | Firebase Functions secret | Generates model responses and document embeddings. |
+| `OPENAI_BASE_URL` | Firebase Functions parameter | Selects the OpenAI-compatible API endpoint. It defaults to `https://aiapi-prod.stanford.edu/v1`. |
+| `OPENAI_RESPONSES_STREAMING_SUPPORTED` | Functions environment | Defaults to trying streaming and falling back when the gateway rejects it before emitting an event. Set to `false` to skip the probe and synthesize events directly from a non-streaming response. |
 | `FIREBASE_PROJECT_ID` | GitHub environment variable | Selects the Firebase project used by deployment workflows. |
 | `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | GitHub environment secret | Authenticates automated Firebase deployments. |
 | `STORAGE_BUCKET` | Functions environment | Overrides the default `<project>.firebasestorage.app` bucket. |
 | `STORAGE_REGION` | Functions environment | Overrides the default `us-central1` Storage trigger region. |
 | `VERBOSE_LOGGING` | Functions environment | Enables detailed request and retrieval logging when set to `true`. |
 | `VITE_STUDY_ID` | Web environment | Overrides the web client's default study identifier. |
+| `VITE_LLM_MODEL` | Web environment | Overrides the web client's default `gpt-5.5` model. The value must also be enabled by the Functions allowlist. |
 
 Configure the production API key with:
 
