@@ -80,7 +80,8 @@ jobs:
           npm --prefix functions ci
           npm --prefix web ci
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools@15.25.1
+        # 15.25 prompts for string params despite their defaults, hanging headless runs.
+        run: npm install -g firebase-tools@15.28.0
       - name: Build Functions
         run: npm --prefix functions run build
       - name: Test Functions with Coverage
