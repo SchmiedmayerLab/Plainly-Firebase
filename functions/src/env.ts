@@ -6,15 +6,12 @@
 // SPDX-License-Identifier: MIT
 //
 
-import {defineSecret, defineString} from "firebase-functions/params";
+import {defineSecret} from "firebase-functions/params";
 
 export const Secrets = {
   OPENAI_API_KEY: defineSecret("OPENAI_API_KEY"),
+  OPENAI_BASE_URL: defineSecret("OPENAI_BASE_URL"),
 };
-
-export const OPENAI_BASE_URL = defineString("OPENAI_BASE_URL", {
-  default: "https://aiapi-prod.stanford.edu/v1",
-});
 
 export const SERVICE_ACCOUNT = `cloud-function-sa@${process.env.GCLOUD_PROJECT}.iam.gserviceaccount.com`;
 

@@ -122,7 +122,7 @@ npm --prefix web run lint
 | Name | Location | Purpose |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Firebase Functions secret | Generates model responses and document embeddings. |
-| `OPENAI_BASE_URL` | Firebase Functions parameter | Selects the OpenAI-compatible API endpoint. It defaults to `https://aiapi-prod.stanford.edu/v1`. |
+| `OPENAI_BASE_URL` | Firebase Functions secret | Selects the OpenAI-compatible API endpoint, for example `https://aiapi-prod.stanford.edu/v1`. |
 | `OPENAI_RESPONSES_STREAMING_SUPPORTED` | Functions environment | Defaults to trying streaming and falling back when the gateway rejects it before emitting an event. Set to `false` to skip the probe and synthesize events directly from a non-streaming response. |
 | `FIREBASE_PROJECT_ID` | GitHub environment variable | Selects the Firebase project used by deployment workflows. |
 | `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | GitHub environment secret | Authenticates automated Firebase deployments. |
