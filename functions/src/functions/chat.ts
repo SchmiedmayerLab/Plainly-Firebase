@@ -8,7 +8,7 @@
 
 import {CallableRequest, HttpsError, onCall} from "firebase-functions/https";
 import OpenAI from "openai";
-import {OPENAI_BASE_URL, Secrets, SERVICE_ACCOUNT} from "../env";
+import {Secrets, SERVICE_ACCOUNT} from "../env";
 import {createChatService, ServiceOptions} from "../services/create-services";
 import {ChatService, streamErrorSequenceNumber} from "../services/chat/chat-service";
 import {parseResponseRequest} from "../services/chat/response-request";
@@ -33,7 +33,7 @@ export interface ChatStreamingResponse {
 
 export const chat = onCall(
   {
-    secrets: [Secrets.OPENAI_API_KEY],
+    secrets: [Secrets.OPENAI_API_KEY, Secrets.OPENAI_BASE_URL],
     serviceAccount: SERVICE_ACCOUNT,
     timeoutSeconds: 540,
     memory: "512MiB",
@@ -48,7 +48,7 @@ export async function handleChatRequest(
     createChatService,
     responseOwners: new ResponseOwnerStore(),
     openAIApiKey: () => Secrets.OPENAI_API_KEY.value(),
-    openAIBaseUrl: () => OPENAI_BASE_URL.value(),
+    openAIBaseUrl: () => Secrets.OPENAI_BASE_URL.value(),
   },
 ): Promise<string | void> {
   if (!req.auth?.token) {

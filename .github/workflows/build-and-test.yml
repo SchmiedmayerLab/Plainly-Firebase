@@ -80,8 +80,7 @@ jobs:
           npm --prefix functions ci
           npm --prefix web ci
       - name: Install Firebase CLI
-        # 15.25 prompts for string params despite their defaults, hanging headless runs.
-        run: npm install -g firebase-tools@15.28.0
+        run: npm install -g firebase-tools@15.25.1
       - name: Build Functions
         run: npm --prefix functions run build
       - name: Test Functions with Coverage
@@ -99,8 +98,6 @@ jobs:
         env:
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: true
           OPENAI_API_KEY: integration-test-key
-          # Without a value the CLI prompts for the param and the job hangs until its timeout.
-          OPENAI_BASE_URL: https://aiapi-prod.stanford.edu/v1
           PLAINLY_MOCK_CHAT_RESPONSE: Plainly Firebase integration response.
       - name: Build Web Client
         run: npm --prefix web run build
