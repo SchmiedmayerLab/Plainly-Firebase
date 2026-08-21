@@ -8,7 +8,18 @@
 
 import assert from "node:assert/strict";
 import {describe, it} from "node:test";
-import {parseResponseRequest} from "../src/services/chat/response-request";
+import {ALLOWED_MODELS, parseResponseRequest} from "../src/services/chat/response-request";
+
+// Restated rather than imported, so that flipping a model's support in the source is a deliberate
+// two-sided change instead of one the test silently follows.
+const SAMPLING_TOLERANT_MODELS = new Set([
+  "gpt-4o",
+  "claude-haiku-4-5",
+  "gemini-2.5-pro",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "Llama-4",
+]);
 
 describe("parseResponseRequest", () => {
   it("accepts the Stanford test deployment model", () => {
@@ -22,6 +33,73 @@ describe("parseResponseRequest", () => {
       ...request,
       store: true,
     });
+  });
+
+  it("drops sampling controls a reasoning model would reject", () => {
+    const request = {
+      model: "gpt-5.5",
+      input: "Hello",
+      temperature: 0,
+      top_p: 0.4,
+      stream: false,
+    };
+
+    assert.deepEqual(parseResponseRequest(JSON.stringify(request)), {
+      model: "gpt-5.5",
+      input: "Hello",
+      stream: false,
+      store: true,
+    });
+  });
+
+  it("keeps sampling controls for a model that accepts them", () => {
+    const request = {
+      model: "gpt-4o",
+      input: "Hello",
+      temperature: 0,
+      stream: false,
+    };
+
+    assert.deepEqual(parseResponseRequest(JSON.stringify(request)), {
+      ...request,
+      store: true,
+    });
+  });
+
+  it("drops sampling controls for the Claude generation that rejects them", () => {
+    const request = {
+      model: "claude-sonnet-5",
+      input: "Hello",
+      temperature: 0,
+      top_p: 0.2,
+      stream: false,
+    };
+
+    assert.deepEqual(parseResponseRequest(JSON.stringify(request)), {
+      model: "claude-sonnet-5",
+      input: "Hello",
+      stream: false,
+      store: true,
+    });
+  });
+
+  it("answers the sampling question for every model it allows", () => {
+    // A model reaches production through this allowlist, so this is the point at which its sampling
+    // support has to be known. An entry added without one would otherwise inherit whatever the last
+    // model happened to declare.
+    for (const model of ALLOWED_MODELS) {
+      const parsed = parseResponseRequest(JSON.stringify({
+        model,
+        input: "Hello",
+        temperature: 0,
+        stream: false,
+      })) as Record<string, unknown>;
+      assert.equal(
+        "temperature" in parsed,
+        SAMPLING_TOLERANT_MODELS.has(model),
+        `${model} neither keeps nor drops sampling controls deliberately.`,
+      );
+    }
   });
 
   it("accepts the Responses request emitted by Plainly", () => {
@@ -38,7 +116,6 @@ describe("parseResponseRequest", () => {
       }],
       tool_choice: "auto",
       reasoning: {summary: "auto"},
-      temperature: 0,
       stream: true,
     };
 

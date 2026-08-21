@@ -22,18 +22,42 @@ const MAX_OUTPUT_TOKENS = 32_768;
 // OpenAI's own `resp_…`; the bound only exists to keep an unbounded string out of Firestore.
 const MAX_RESPONSE_ID_LENGTH = 4096;
 
-const ALLOWED_MODELS = new Set([
-  "gpt-5.4",
-  "gpt-5.5",
-  "gpt-4o",
-  "claude-opus-5",
-  "claude-sonnet-5",
-  "claude-haiku-4-5",
-  "gemini-2.5-pro",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "Llama-4",
-]);
+/**
+ * The request properties that steer sampling rather than describe the conversation.
+ *
+ * Nothing about the conversation is lost by leaving them out, which is what makes dropping them the right
+ * answer for a model that will not take them.
+ */
+const SAMPLING_PARAMETERS = [
+  "temperature",
+  "top_p",
+  "top_k",
+  "presence_penalty",
+  "frequency_penalty",
+];
+
+/**
+ * The models Plainly may request, and whether each accepts the sampling controls of the Responses API.
+ *
+ * Support is declared per model rather than inferred from the identifier, because it does not follow the
+ * naming: reasoning models and the current Claude generation reject `temperature` and `top_p` with a 400
+ * instead of ignoring them, while their predecessors accept both. Adding a model therefore means answering
+ * this question for it, and `samplingControlsByModel` is the one place that answer lives.
+ */
+const SAMPLING_CONTROL_SUPPORT = {
+  "gpt-5.4": false,
+  "gpt-5.5": false,
+  "gpt-4o": true,
+  "claude-opus-5": false,
+  "claude-sonnet-5": false,
+  "claude-haiku-4-5": true,
+  "gemini-2.5-pro": true,
+  "gemini-2.5-flash": true,
+  "gemini-2.5-flash-lite": true,
+  "Llama-4": true,
+} as const satisfies Record<string, boolean>;
+
+export const ALLOWED_MODELS: ReadonlySet<string> = new Set(Object.keys(SAMPLING_CONTROL_SUPPORT));
 
 const ALLOWED_KEYS = new Set([
   "input",
@@ -110,7 +134,25 @@ export function parseResponseRequest(json: unknown): ResponseBody {
   validateInput(value.input);
   validateTools(value.tools);
   validateToolChoice(value.tool_choice);
-  return {...value, store: true} as ResponseBody;
+  return {...withoutUnsupportedSampling(value), store: true} as ResponseBody;
+}
+
+/**
+ * Drops the sampling controls a reasoning model would reject.
+ *
+ * A client that pins a temperature for reproducibility should keep working when a study moves onto a
+ * reasoning model, rather than having every request fail.
+ */
+function withoutUnsupportedSampling(value: Record<string, unknown>): Record<string, unknown> {
+  const model = value.model as keyof typeof SAMPLING_CONTROL_SUPPORT;
+  if (SAMPLING_CONTROL_SUPPORT[model]) {
+    return value;
+  }
+  const remaining = {...value};
+  for (const key of SAMPLING_PARAMETERS) {
+    delete remaining[key];
+  }
+  return remaining;
 }
 
 function validateInput(input: unknown): void {
