@@ -98,6 +98,8 @@ jobs:
         env:
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: true
           OPENAI_API_KEY: integration-test-key
+          # Without a value the CLI prompts for the param and the job hangs until its timeout.
+          OPENAI_BASE_URL: https://aiapi-prod.stanford.edu/v1
           PLAINLY_MOCK_CHAT_RESPONSE: Plainly Firebase integration response.
       - name: Build Web Client
         run: npm --prefix web run build
