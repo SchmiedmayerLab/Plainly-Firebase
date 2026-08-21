@@ -11,8 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "firebase": "^12.16.0",
-    "openai": "^7.1.0",
+    "firebase": "^12.17.1",
+    "openai": "^7.5.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
@@ -22,20 +22,20 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.2.0",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
     "autoprefixer": "^10.5.4",
-    "eslint": "^10.8.0",
+    "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.3",
-    "globals": "^17.8.0",
-    "postcss": "^8.5.25",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "globals": "^17.11.0",
+    "postcss": "^8.5.26",
     "tailwindcss": "^4.3.3",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.65.0",
-    "vite": "^8.2.0"
+    "typescript": "~7.0.2",
+    "typescript-eslint": "^8.67.0",
+    "vite": "^8.2.1"
   },
   "overrides": {
     "brace-expansion@<1.1.18": "1.1.18",
