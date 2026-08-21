@@ -12,7 +12,14 @@ import {extname, join} from "node:path";
 import {tmpdir} from "node:os";
 import {randomUUID} from "node:crypto";
 import {getStorage} from "firebase-admin/storage";
-import {Secrets, SERVICE_ACCOUNT, STORAGE_BUCKET, STORAGE_FILE_PATH_PATTERN, STORAGE_REGION} from "../env";
+import {
+  OPENAI_BASE_URL,
+  Secrets,
+  SERVICE_ACCOUNT,
+  STORAGE_BUCKET,
+  STORAGE_FILE_PATH_PATTERN,
+  STORAGE_REGION,
+} from "../env";
 import {createIndexingService} from "../services/create-services";
 
 const SUPPORTED_CONTENT_TYPES = new Set([
@@ -25,7 +32,7 @@ export const onPDFUploaded = onObjectFinalized(
   {
     bucket: STORAGE_BUCKET,
     region: STORAGE_REGION,
-    secrets: [Secrets.OPENAI_API_KEY, Secrets.OPENAI_BASE_URL],
+    secrets: [Secrets.OPENAI_API_KEY],
     serviceAccount: SERVICE_ACCOUNT,
     timeoutSeconds: 540,
     memory: "512MiB",
@@ -59,7 +66,7 @@ export const onPDFUploaded = onObjectFinalized(
       const indexingService = createIndexingService({
         studyId,
         openAIApiKey: Secrets.OPENAI_API_KEY.value(),
-        openAIBaseUrl: Secrets.OPENAI_BASE_URL.value(),
+        openAIBaseUrl: OPENAI_BASE_URL.value(),
       });
 
       const result = await indexingService.index(

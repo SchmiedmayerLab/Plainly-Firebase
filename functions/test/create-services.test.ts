@@ -9,7 +9,12 @@
 import assert from "node:assert/strict";
 import {before, describe, it} from "node:test";
 import {getApps, initializeApp} from "firebase-admin/app";
-import {createAI, createChatService, createIndexingService} from "../src/services/create-services";
+import {
+  createAI,
+  createChatService,
+  createIndexingService,
+  supportsResponsesStreaming,
+} from "../src/services/create-services";
 
 const options = {
   studyId: "study",
@@ -49,11 +54,31 @@ describe("createChatService", () => {
 
     const result = await service.chatNonStreaming({
       model: "gpt-4o-mini",
-      messages: [{role: "user", content: "Hello"}],
+      input: [{role: "user", content: "Hello"}],
       stream: false,
     });
 
     assert.match(result, /Mocked response\./);
+  });
+
+  it("stands in for the scenario it was named", async () => {
+    const service = createChatService({...options, mockScenario: "chatError"}, "Mocked response.");
+
+    await assert.rejects(
+      () => service.chatNonStreaming({
+        model: "gpt-4o-mini",
+        input: [{role: "user", content: "Hello"}],
+        stream: false,
+      }),
+      /Mock response request failed/,
+    );
+  });
+
+  it("refuses a scenario it does not have, rather than behaving normally", () => {
+    assert.throws(
+      () => createChatService({...options, mockScenario: "notAScenario"}, "Mocked response."),
+      /Unknown Firebase mock scenario 'notAScenario'/,
+    );
   });
 
   it("creates a service without interceptors when RAG is disabled", () => {
@@ -66,6 +91,21 @@ describe("createChatService", () => {
     const service = createChatService({...customBaseUrlOptions, ragEnabled: true}, undefined);
 
     assert.equal(service.interceptors.length, 1);
+  });
+});
+
+describe("supportsResponsesStreaming", () => {
+  it("tries streaming by default so unsupported gateways exercise the fallback", () => {
+    assert.equal(supportsResponsesStreaming({}), true);
+  });
+
+  it("allows an explicit capability override", () => {
+    assert.equal(supportsResponsesStreaming(
+      {OPENAI_RESPONSES_STREAMING_SUPPORTED: "true"},
+    ), true);
+    assert.equal(supportsResponsesStreaming(
+      {OPENAI_RESPONSES_STREAMING_SUPPORTED: "false"},
+    ), false);
   });
 });
 

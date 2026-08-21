@@ -6,7 +6,7 @@
     "lint:strict": "eslint src test scripts --max-warnings 0",
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "serve": "npm run build && firebase emulators:start --only functions,storage",
+    "serve": "npm run build && firebase emulators:start --only auth,functions,firestore,storage",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "test": "tsx --test test/**/*.test.ts",

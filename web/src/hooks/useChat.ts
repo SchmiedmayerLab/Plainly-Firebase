@@ -6,17 +6,17 @@
 // SPDX-License-Identifier: MIT
 //
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import OpenAI from "openai";
-import type {
-  ChatCompletionChunk,
-  ChatCompletionMessageParam,
-  ChatCompletionMessageToolCall,
-  ChatCompletionTool,
-} from "openai/resources/chat/completions";
+import type { FunctionTool } from "openai/resources/responses/responses";
 import { initializeApp } from "firebase/app";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 import { connectAuthEmulator, initializeAuth, signInAnonymously } from "firebase/auth";
+import {
+  ResponseConversation,
+  resolveResponseModel,
+  type ToolCall,
+} from "./responses";
 
 export interface RagContextInfo {
   context: string;
@@ -27,7 +27,7 @@ export interface RagContextInfo {
 export interface Message {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
-  tool_calls?: ChatCompletionMessageToolCall[];
+  tool_calls?: ToolCall[];
   tool_call_id?: string;
 }
 
@@ -44,28 +44,52 @@ connectAuthEmulator(auth, "http://localhost:9099");
 const functions = getFunctions(app);
 connectFunctionsEmulator(functions, "localhost", 5001);
 
+const model = resolveResponseModel(import.meta.env.VITE_LLM_MODEL);
+
+function urlString(url: string | Request | URL): string {
+  return url instanceof Request ? url.url : url.toString();
+}
+
+function requestBody(init?: RequestInit): string {
+  if (typeof init?.body !== "string") {
+    throw new Error("The Firebase Responses request body is missing.");
+  }
+  return init.body;
+}
+
 const createOpenAIClient = (ragEnabled: boolean) => {
   const customFetch = async (
     url: string | Request | URL,
     init?: RequestInit
   ): Promise<Response> => {
-    const urlString = typeof url === "string" ? url : url.toString();
-    if (urlString.includes("/v1/chat/completions")) {
+    if (urlString(url).includes("/v1/responses")) {
       await signInAnonymously(auth);
       const studyId =
         import.meta.env.VITE_STUDY_ID || "edu.stanford.plainly.spineAI";
       const name =
         `chat?studyId=${studyId}&ragEnabled=${ragEnabled}`
-      const callable = httpsCallable(functions, name);
-      const {stream, data} = await callable.stream(init?.body);
+      const body = requestBody(init);
+      const callable = httpsCallable<string, string, string>(functions, name);
+      const parsedBody = JSON.parse(body) as { stream?: boolean };
+
+      if (!parsedBody.stream) {
+        const result = await callable(body);
+        return new Response(result.data, {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const {stream, data} = await callable.stream(body);
       const responseStream = new ReadableStream({
         start: async (controller) => {
           try {
             for await (const chunk of stream) {
-              controller.enqueue(new TextEncoder().encode(chunk as string));
+              controller.enqueue(new TextEncoder().encode(chunk));
             }
             const result = await data;
-            controller.enqueue(new TextEncoder().encode(result as string));
+            if (result) {
+              controller.enqueue(new TextEncoder().encode(result));
+            }
             controller.close();
           } catch (error) {
             controller.error(error);
@@ -135,54 +159,51 @@ When a user asks about their health information, use the get_resources tool to r
 
 Be empathetic, clear, and helpful. If you don't have enough information to answer a question, say so honestly.`;
 
-const tools: ChatCompletionTool[] = [
+const tools: FunctionTool[] = [
   {
     type: "function",
-    function: {
-      name: "get_resources",
-      description:
-        "Call this function to request the relevant FHIR health records based on the user's question and conversation context using their FHIR resource identifiers.",
-      parameters: {
-        type: "object",
-        properties: {
-          resourceCategories: {
-            type: "array",
-            description: "Pass in one or more identifiers that you want to access.",
-            items: {
-              type: "string",
-              enum: [
-                "Procedure-Appendectomy-05-25-2014",
-                "Observation-ThyroxineT4-09-04-2014",
-                "Observation-TSH-09-04-2014",
-                "Procedure-ACLrepair-06-09-2021",
-                "Observation-Totalcholesterol-10-18-2023",
-                "Observation-BloodGlucose-10-18-2023",
-                "Procedure-UltrasoundAbdomen-10-18-2023",
-                "Observation-CBCpanelBloodbyAutomatedcount-10-18-2023",
-                "Observation-RespiratoryRate-10-18-2023",
-                "Observation-BPbloodpressure-10-18-2023",
-                "Observation-Weight-10-18-2023",
-                "Observation-Height-10-18-2023",
-                "Observation-LDLcholesterol-10-18-2023",
-                "Observation-CholesterolHDL-02-18-2024",
-                "Observation-Triglycerides-02-18-2024",
-                "Observation-BMIbodymassindex-02-18-2024",
-                "Observation-Temperature-02-18-2024",
-                "Observation-Pulse-02-18-2024",
-              ],
-            },
+    name: "get_resources",
+    description:
+      "Call this function to request the relevant FHIR health records based on the user's question and conversation context using their FHIR resource identifiers.",
+    parameters: {
+      type: "object",
+      properties: {
+        resourceCategories: {
+          type: "array",
+          description: "Pass in one or more identifiers that you want to access.",
+          items: {
+            type: "string",
+            enum: [
+              "Procedure-Appendectomy-05-25-2014",
+              "Observation-ThyroxineT4-09-04-2014",
+              "Observation-TSH-09-04-2014",
+              "Procedure-ACLrepair-06-09-2021",
+              "Observation-Totalcholesterol-10-18-2023",
+              "Observation-BloodGlucose-10-18-2023",
+              "Procedure-UltrasoundAbdomen-10-18-2023",
+              "Observation-CBCpanelBloodbyAutomatedcount-10-18-2023",
+              "Observation-RespiratoryRate-10-18-2023",
+              "Observation-BPbloodpressure-10-18-2023",
+              "Observation-Weight-10-18-2023",
+              "Observation-Height-10-18-2023",
+              "Observation-LDLcholesterol-10-18-2023",
+              "Observation-CholesterolHDL-02-18-2024",
+              "Observation-Triglycerides-02-18-2024",
+              "Observation-BMIbodymassindex-02-18-2024",
+              "Observation-Temperature-02-18-2024",
+              "Observation-Pulse-02-18-2024",
+            ],
           },
         },
-        required: ["resourceCategories"],
       },
+      required: ["resourceCategories"],
     },
+    strict: false,
   },
 ];
 
-const executeToolCall = (toolCall: {
-  function: { name: string; arguments: string };
-}): string => {
-  const { name, arguments: argsStr } = toolCall.function;
+const executeToolCall = (toolCall: ToolCall): string => {
+  const { name, arguments: argsStr } = toolCall;
   const args = JSON.parse(argsStr || "{}");
 
   if (name === "get_resources") {
@@ -200,61 +221,15 @@ const executeToolCall = (toolCall: {
   return "Unknown tool";
 };
 
-const buildMessagesForAPI = (
-  history: Message[]
-): ChatCompletionMessageParam[] => {
-  const api: ChatCompletionMessageParam[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-  ];
-
-  for (const m of history) {
-    if (m.role === "system") continue;
-
-    if (m.role === "user") {
-      api.push({ role: "user", content: m.content ?? "" });
-      continue;
-    }
-
-    if (m.role === "assistant") {
-      if (m.tool_calls && m.tool_calls.length > 0) {
-        api.push({
-          role: "assistant",
-          content: null,
-          tool_calls: m.tool_calls,
-        });
-      } else {
-        api.push({ role: "assistant", content: m.content ?? "" });
-      }
-      continue;
-    }
-
-    if (m.role === "tool") {
-      api.push({
-        role: "tool",
-        content: m.content ?? "",
-        tool_call_id: m.tool_call_id ?? "",
-      });
-    }
-  }
-
-  return api;
-};
-
 interface UseChatOptions {
   ragEnabled?: boolean;
-}
-
-interface ToolCallAccumulated {
-  index: number;
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
 }
 
 export function useChat(options: UseChatOptions = {}) {
   const { ragEnabled = true } = options;
 
   const openai = useMemo(() => createOpenAIClient(ragEnabled), [ragEnabled]);
+  const conversation = useRef(new ResponseConversation());
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentResponse, setCurrentResponse] = useState("");
@@ -262,6 +237,7 @@ export function useChat(options: UseChatOptions = {}) {
   const [isLoading, setIsLoading] = useState(false);
 
   const reset = () => {
+    conversation.current.reset();
     setMessages([]);
     setCurrentResponse("");
     setRagContext(null);
@@ -283,91 +259,46 @@ export function useChat(options: UseChatOptions = {}) {
     ];
     setMessages(currentMessages);
 
-    let responseText = "";
     let responseIndex = currentMessages.length;
 
-    while (true) {
-      try {
-        const stream = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: buildMessagesForAPI(currentMessages),
+    try {
+      const result = await conversation.current.run({
+        request: {
+          model,
+          instructions: SYSTEM_PROMPT,
           tools,
-          stream: true,
-          temperature: 0,
-        });
-
-        let finishReason: string | null = null;
-        const toolCallsByIndex = new Map<number, ToolCallAccumulated>();
-
-        for await (const chunk of stream) {
-          if ("type" in chunk && chunk.type === "rag_context") {
-            setRagContext(chunk as unknown as RagContextInfo);
-            continue;
-          }
-
-          const typedChunk = chunk as ChatCompletionChunk;
-          const choice = typedChunk.choices?.[0];
-          if (!choice) continue;
-
-          if (choice.delta?.content) {
-            responseText += choice.delta.content;
-            setCurrentResponse(responseText);
-          }
-
-          const deltas = choice.delta?.tool_calls;
-          if (deltas) {
-            for (const tc of deltas) {
-              const idx = tc.index ?? 0;
-              const existing = toolCallsByIndex.get(idx) ?? {
-                index: idx,
-                id: "",
-                type: "function" as const,
-                function: { name: "", arguments: "" },
-              };
-
-              if (tc.id) existing.id = tc.id;
-              if (tc.type) existing.type = "function";
-              if (tc.function?.name) existing.function.name = tc.function.name;
-              if (tc.function?.arguments) {
-                existing.function.arguments += tc.function.arguments;
-              }
-
-              toolCallsByIndex.set(idx, existing);
-            }
-          }
-
-          if (choice.finish_reason) {
-            finishReason = choice.finish_reason;
-          }
-        }
-
-        const toolCalls = [...toolCallsByIndex.values()].sort(
-          (a, b) => a.index - b.index
-        );
-
-          if (toolCalls.length > 0 || finishReason === "tool_calls") {
-          setCurrentResponse("");
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: responseText,
-              tool_calls: toolCalls as ChatCompletionMessageToolCall[],
-            },
-          ]);
-
-
-          const toolResults: Message[] = toolCalls.map((tc) => {
-            const result = executeToolCall({
-              function: {
-                name: tc.function.name,
-                arguments: tc.function.arguments,
-              },
+        },
+        input: [{ role: "user", content: userQuery }],
+        createResponse: async (request) =>
+          await openai.responses.create(request),
+        executeTool: executeToolCall,
+        onEvent: (event) => {
+          const customEvent = event as unknown as Partial<RagContextInfo> & {
+            type?: string;
+          };
+          if (
+            customEvent.type === "rag_context" &&
+            typeof customEvent.context === "string" &&
+            typeof customEvent.contextLength === "number" &&
+            typeof customEvent.enabled === "boolean"
+          ) {
+            setRagContext({
+              context: customEvent.context,
+              contextLength: customEvent.contextLength,
+              enabled: customEvent.enabled,
             });
+            return true;
+          }
+          return false;
+        },
+        onText: setCurrentResponse,
+        onToolRound: ({ text, toolCalls }) => {
+          setCurrentResponse("");
+          const toolResults: Message[] = toolCalls.map(({ call, output }) => {
             return {
-              tool_call_id: tc.id,
+              tool_call_id: call.id,
               role: "tool" as const,
-              content: result,
+              content: output,
             };
           });
 
@@ -375,43 +306,36 @@ export function useChat(options: UseChatOptions = {}) {
             ...currentMessages,
             {
               role: "assistant",
-              content: responseText,
-              tool_calls: toolCalls as ChatCompletionMessageToolCall[],
+              content: text,
+              tool_calls: toolCalls.map(({ call }) => call),
             },
             ...toolResults,
           ];
           setMessages(currentMessages);
 
           responseIndex = currentMessages.length;
-          responseText = "";
           setCurrentResponse("");
-          continue;
-        }
+        },
+      });
 
-        currentMessages = [
-          ...currentMessages,
-          { role: "assistant", content: responseText },
-        ];
-        setCurrentResponse("");
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: responseText },
-        ]);
-        break;
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to get response";
+      currentMessages = [
+        ...currentMessages,
+        { role: "assistant", content: result.text },
+      ];
+      setCurrentResponse("");
+      setMessages(currentMessages);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to get response";
 
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[responseIndex] = {
-            role: "assistant",
-            content: `Error: ${message}`,
-          };
-          return updated;
-        });
-        break;
-      }
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[responseIndex] = {
+          role: "assistant",
+          content: `Error: ${message}`,
+        };
+        return updated;
+      });
     }
 
     setIsLoading(false);
