@@ -33,4 +33,4 @@ else
 fi
 
 cd ..
-firebase emulators:start --only auth,functions,firestore
+firebase emulators:start --only auth,functions
