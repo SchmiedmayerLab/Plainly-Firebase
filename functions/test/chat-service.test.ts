@@ -16,7 +16,9 @@ import {
   ChatService,
   ResponseBody,
   streamErrorSequenceNumber,
+  streamEvents,
 } from "../src/services/chat/chat-service";
+import {CitationOutputTransform} from "../src/services/chat/citation-output-transform";
 import {createMockOpenAIClient} from "../src/services/chat/mock-openai-client";
 
 const request: ResponseBody = {
@@ -41,7 +43,7 @@ describe("ChatService", () => {
       },
     } as unknown as OpenAI;
     const interceptor: ChatInterceptor = {
-      intercept: async (body) => ({...body, instructions: "Retrieved context"}),
+      intercept: async (body) => ({body: {...body, instructions: "Retrieved context"}}),
     };
     const service = new ChatService(client, [interceptor]);
 
@@ -171,7 +173,7 @@ describe("ChatService", () => {
     const service = new ChatService(client, [{
       intercept: async (body) => {
         interceptions += 1;
-        return {...body, instructions: "Context"};
+        return {body: {...body, instructions: "Context"}};
       },
     }]);
     const chunks: string[] = [];
@@ -266,7 +268,9 @@ describe("ChatService", () => {
     const events = parseEvents(chunks);
     assert.equal(callCount, 1);
     assert.equal(events.filter((event) => event.type === "response.created").length, 1);
-    assert.deepEqual(events.map((event) => event.sequence_number), [8, 9]);
+    // Numbered by the service rather than carried over from upstream: an interceptor's output
+    // transform can inject events, so the upstream numbering no longer describes this stream.
+    assert.deepEqual(events.map((event) => event.sequence_number), [0, 1]);
   });
 
   it("does not replay an empty stream", async () => {
@@ -526,3 +530,117 @@ function textFromEvents(events: ParsedEvent[]): string {
     .map((event) => event.delta)
     .join("");
 }
+
+describe("ChatService citations", () => {
+  const source = {
+    id: "sguidelinec4",
+    file: "guideline.pdf",
+    title: "Smith et al. (2021) — Lumbar Fusion Guideline · NASS",
+  };
+  const marker = String.fromCharCode(0xe200) + "cite" + String.fromCharCode(0xe202) +
+    source.id + String.fromCharCode(0xe201);
+
+  const citingInterceptor: ChatInterceptor = {
+    intercept: async (body) => ({
+      body,
+      outputTransform: new CitationOutputTransform(new Map([[source.id, source]])),
+    }),
+  };
+
+  function markedResponse(): Response {
+    return completedResponse(`Fusion improves function.${marker}`);
+  }
+
+  function streamingClient(): OpenAI {
+    return {
+      responses: {
+        create: async (body: ResponseBody) => body.stream ?
+          (async function* () {
+            yield* streamEvents(markedResponse());
+          })() :
+          markedResponse(),
+      },
+    } as unknown as OpenAI;
+  }
+
+  it("never streams a citation marker to the client", async () => {
+    const chunks: string[] = [];
+    const service = new ChatService(streamingClient(), [citingInterceptor]);
+
+    await service.chatStreaming({...request, stream: true}, async (chunk) => {
+      chunks.push(chunk);
+      return true;
+    });
+
+    assert.doesNotMatch(chunks.join(""), new RegExp(String.fromCharCode(0xe200)));
+    assert.equal(textFromEvents(parseEvents(chunks)), "Fusion improves function.");
+  });
+
+  it("puts the citation on the finished message item, where the iOS client reads it", async () => {
+    const chunks: string[] = [];
+    const service = new ChatService(streamingClient(), [citingInterceptor]);
+
+    await service.chatStreaming({...request, stream: true}, async (chunk) => {
+      chunks.push(chunk);
+      return true;
+    });
+
+    const done = parseEvents(chunks).find((event) => event.type === "response.output_item.done");
+    assert.deepEqual(done?.item?.content?.[0].annotations, [{
+      type: "file_citation",
+      file_id: "guideline.pdf",
+      filename: source.title,
+      // The end of the sentence the marker followed.
+      index: "Fusion improves function.".length,
+    }]);
+  });
+
+  it("announces each citation as its own event as well", async () => {
+    const chunks: string[] = [];
+    const service = new ChatService(streamingClient(), [citingInterceptor]);
+
+    await service.chatStreaming({...request, stream: true}, async (chunk) => {
+      chunks.push(chunk);
+      return true;
+    });
+
+    const events = parseEvents(chunks);
+    assert.equal(
+      events.filter((event) => event.type === "response.output_text.annotation.added").length,
+      1,
+    );
+    // Injecting events must not leave a gap or a repeat in what the client receives.
+    assert.deepEqual(
+      events.map((event) => event.sequence_number),
+      events.map((_, index) => index),
+    );
+  });
+
+  it("cites the same way when the endpoint cannot stream", async () => {
+    const chunks: string[] = [];
+    const service = new ChatService(streamingClient(), [citingInterceptor], false);
+
+    await service.chatStreaming({...request, stream: true}, async (chunk) => {
+      chunks.push(chunk);
+      return true;
+    });
+
+    const events = parseEvents(chunks);
+    assert.equal(textFromEvents(events), "Fusion improves function.");
+    const done = events.find((event) => event.type === "response.output_item.done");
+    assert.equal(done?.item?.content?.[0].annotations?.length, 1);
+    assert.equal(
+      events.filter((event) => event.type === "response.output_text.annotation.added").length,
+      1,
+    );
+  });
+
+  it("cites a non-streaming response too", async () => {
+    const service = new ChatService(streamingClient(), [citingInterceptor]);
+
+    const result = JSON.parse(await service.chatNonStreaming({...request, stream: false}));
+
+    assert.equal(result.output[0].content[0].text, "Fusion improves function.");
+    assert.equal(result.output[0].content[0].annotations[0].filename, source.title);
+  });
+});

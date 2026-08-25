@@ -63,12 +63,12 @@ describe("AgenticContextChatInterceptor", () => {
       name: "retrieve_context",
     });
     assert.equal(internalRequest?.tools?.[0].type, "function");
-    assert.deepEqual(result.input, request.input);
+    assert.deepEqual(result.body.input, request.input);
     assert.match(
-      result.instructions ?? "",
+      result.body.instructions ?? "",
       /alternatives\.pdf[\s\S]*Alternative evidence[\s\S]*treatment\.pdf[\s\S]*Treatment evidence/,
     );
-    assert.match(result.instructions ?? "", /^Answer with the available evidence\./);
+    assert.match(result.body.instructions ?? "", /^Answer with the available evidence\./);
   });
 
   it("includes document metadata in the injected context", async () => {
@@ -86,7 +86,7 @@ describe("AgenticContextChatInterceptor", () => {
 
     const result = await interceptor.intercept(request);
     assert.match(
-      result.instructions ?? "",
+      result.body.instructions ?? "",
       /\[Document: guideline\.pdf \| Title: Lumbar Fusion Outcomes \| Author: J\. Smith \| Year: 2021 \| Chunk 4\]/,
     );
   });
@@ -103,8 +103,8 @@ describe("AgenticContextChatInterceptor", () => {
 
     const result = await interceptor.intercept({...request, input: "What helps?"});
 
-    assert.equal(result.input, "What helps?");
-    assert.match(result.instructions ?? "", /Relevant context/);
+    assert.equal(result.body.input, "What helps?");
+    assert.match(result.body.instructions ?? "", /Relevant context/);
   });
 
   it("deduplicates and limits model-generated retrieval queries", async () => {
@@ -168,13 +168,13 @@ describe("AgenticContextChatInterceptor", () => {
     const continuationResult = await interceptor.intercept(continuation);
     const secondResult = await interceptor.intercept(secondTurn);
 
-    assert.deepEqual(firstResult.input, firstTurn.input);
-    assert.deepEqual(continuationResult.input, continuation.input);
-    assert.deepEqual(secondResult.input, secondTurn.input);
-    assert.match(firstResult.instructions ?? "", /First-turn evidence/);
-    assert.match(continuationResult.instructions ?? "", /First-turn evidence/);
-    assert.match(secondResult.instructions ?? "", /Second-turn evidence/);
-    assert.doesNotMatch(secondResult.instructions ?? "", /First-turn evidence/);
+    assert.deepEqual(firstResult.body.input, firstTurn.input);
+    assert.deepEqual(continuationResult.body.input, continuation.input);
+    assert.deepEqual(secondResult.body.input, secondTurn.input);
+    assert.match(firstResult.body.instructions ?? "", /First-turn evidence/);
+    assert.match(continuationResult.body.instructions ?? "", /First-turn evidence/);
+    assert.match(secondResult.body.instructions ?? "", /Second-turn evidence/);
+    assert.doesNotMatch(secondResult.body.instructions ?? "", /First-turn evidence/);
     assert.equal(plannerCall, 3);
   });
 
@@ -206,7 +206,7 @@ describe("AgenticContextChatInterceptor", () => {
 
     const result = await interceptor.intercept(assistantOnly);
 
-    assert.equal(result, assistantOnly);
+    assert.equal(result.body, assistantOnly);
     assert.equal(plannerCalled, false);
   });
 
@@ -229,7 +229,7 @@ describe("AgenticContextChatInterceptor", () => {
 
     const result = await interceptor.intercept(oneShot);
 
-    assert.equal(result, oneShot);
+    assert.equal(result.body, oneShot);
     assert.equal(plannerCalled, false);
   });
 
@@ -318,3 +318,90 @@ function toolCallResponse(
     output_text: "",
   } as unknown as Response;
 }
+
+describe("AgenticContextChatInterceptor citations", () => {
+  const guideline: RetrievedDocument = {
+    text: "Fusion improves function at two years.",
+    file: "guideline.pdf",
+    distance: 0.1,
+    chunkId: 4,
+    metadata: {title: "Lumbar Fusion Guideline", author: "Smith et al.", year: 2021},
+  };
+
+  it("labels every chunk with a citable block and asks the model to cite it", async () => {
+    const interceptor = new AgenticContextChatInterceptor(
+      makeContextStore(async () => [guideline]),
+      responseClient(async () => toolCallResponse([{query: "fusion"}])),
+    );
+
+    const result = await interceptor.intercept(request);
+    const instructions = result.body.instructions ?? "";
+
+    assert.match(instructions, /<citable id="[A-Za-z0-9_-]+">/);
+    assert.match(instructions, /Every <citable id="\.\.\."> block above is a source\./);
+    assert.match(instructions, /Ids from earlier in this conversation no longer refer to/);
+    assert.ok(result.outputTransform, "a request that injects context must be able to undo it");
+  });
+
+  it("turns the markers the model writes into citations a client can show", async () => {
+    const interceptor = new AgenticContextChatInterceptor(
+      makeContextStore(async () => [guideline]),
+      responseClient(async () => toolCallResponse([{query: "fusion"}])),
+    );
+
+    const result = await interceptor.intercept(request);
+    const id = /<citable id="([A-Za-z0-9_-]+)">/.exec(result.body.instructions ?? "")?.[1];
+    assert.ok(id);
+
+    const marker = String.fromCharCode(0xe200) + "cite" + String.fromCharCode(0xe202) +
+      id + String.fromCharCode(0xe201);
+    const answered = result.outputTransform?.transformResponse({
+      id: "resp-1",
+      object: "response",
+      created_at: 0,
+      status: "completed",
+      model: "test-model",
+      output: [{
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{type: "output_text", text: `Fusion helps.${marker}`, annotations: []}],
+      }],
+      output_text: "",
+    } as unknown as Response);
+
+    const item = answered?.output[0];
+    const content = item?.type === "message" ? item.content[0] : undefined;
+    assert.equal(content?.type === "output_text" ? content.text : "", "Fusion helps.");
+    assert.deepEqual(content?.type === "output_text" ? content.annotations : [], [{
+      type: "file_citation",
+      file_id: "guideline.pdf",
+      // The reference a reader sees, not the file it happens to be stored under.
+      filename: "Smith et al. (2021) — Lumbar Fusion Guideline",
+      index: 13,
+    }]);
+  });
+
+  it("shows a chunk two queries both found only once", async () => {
+    const interceptor = new AgenticContextChatInterceptor(
+      makeContextStore(async () => [guideline]),
+      responseClient(async () => toolCallResponse([{query: "fusion"}, {query: "outcomes"}])),
+    );
+
+    const result = await interceptor.intercept(request);
+    const instructions = result.body.instructions ?? "";
+
+    assert.equal(instructions.match(/<\/citable>/g)?.length, 1);
+  });
+
+  it("produces no transform for a request it does not add context to", async () => {
+    const interceptor = new AgenticContextChatInterceptor(
+      makeContextStore(async () => []),
+      responseClient(async () => toolCallResponse([{query: "fusion"}])),
+    );
+
+    const result = await interceptor.intercept(request);
+    assert.equal(result.outputTransform, undefined);
+  });
+});

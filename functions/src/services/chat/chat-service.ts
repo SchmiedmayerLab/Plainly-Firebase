@@ -15,6 +15,7 @@ import {
   ResponseStreamEvent,
 } from "openai/resources/responses/responses";
 import {ChatInterceptor} from "./chat-interceptor";
+import {OutputTransform} from "./output-transform";
 
 
 export type ResponseBody =
@@ -43,27 +44,27 @@ export class ChatService {
   ) {}
 
   async chatNonStreaming(body: ResponseCreateParamsNonStreaming): Promise<string> {
-    const updatedBody = await this.applyInterceptors(body);
+    const {body: updatedBody, transforms} = await this.applyInterceptors(body);
     const response = await this.openai.responses.create({
       ...updatedBody,
       stream: false,
     });
-    return JSON.stringify(responseWithoutInstructions(response));
+    return JSON.stringify(responseWithoutInstructions(transformResponse(transforms, response)));
   }
 
   async chatStreaming(body: ResponseCreateParamsStreaming, onChunk: OnChunk): Promise<void> {
-    const updatedBody = await this.applyInterceptors(body);
+    const {body: updatedBody, transforms} = await this.applyInterceptors(body);
     let hasCommittedConversation = false;
     let receivedEvent = false;
     let nextForwardedSequenceNumber = 0;
+    // A transform can inject events of its own, so the upstream numbering no longer describes what
+    // the client receives; every forwarded event is numbered here instead.
     const forwardEvent = async (event: ResponseStreamEvent): Promise<boolean> => {
-      const sanitizedEvent = eventWithoutInstructions(event);
-      const shouldContinue = await onChunk(formatServerSentEvent(sanitizedEvent));
-      nextForwardedSequenceNumber = Math.max(
-        nextForwardedSequenceNumber,
-        sanitizedEvent.sequence_number + 1,
-      );
-      return shouldContinue;
+      const sanitizedEvent = {
+        ...eventWithoutInstructions(event),
+        sequence_number: nextForwardedSequenceNumber++,
+      } as ResponseStreamEvent;
+      return await onChunk(formatServerSentEvent(sanitizedEvent));
     };
 
     const forwardNonStreamingResponse = async (): Promise<void> => {
@@ -71,7 +72,9 @@ export class ChatService {
         ...updatedBody,
         stream: false,
       });
-      for (const event of streamEvents(response)) {
+      // Transformed once, here: the replayed events carry the finished text already, and running
+      // them through the transforms again would look for markers that have been removed.
+      for (const event of streamEvents(transformResponse(transforms, response))) {
         if (!await forwardEvent(event)) {
           return;
         }
@@ -96,8 +99,10 @@ export class ChatService {
       for await (const event of stream) {
         receivedEvent = true;
         hasCommittedConversation ||= eventCommitsConversation(event);
-        if (!await forwardEvent(event)) {
-          return;
+        for (const transformed of transformEvent(transforms, event)) {
+          if (!await forwardEvent(transformed)) {
+            return;
+          }
         }
       }
 
@@ -124,13 +129,34 @@ export class ChatService {
     }
   }
 
-  private async applyInterceptors(body: ResponseBody): Promise<ResponseBody> {
+  private async applyInterceptors(
+    body: ResponseBody,
+  ): Promise<{body: ResponseBody; transforms: OutputTransform[]}> {
     let current = body;
+    const transforms: OutputTransform[] = [];
     for (const interceptor of this.interceptors) {
-      current = await interceptor.intercept(current);
+      const intercepted = await interceptor.intercept(current);
+      current = intercepted.body;
+      if (intercepted.outputTransform) {
+        transforms.push(intercepted.outputTransform);
+      }
     }
-    return current;
+    return {body: current, transforms};
   }
+}
+
+function transformResponse(transforms: OutputTransform[], response: Response): Response {
+  return transforms.reduce((current, transform) => transform.transformResponse(current), response);
+}
+
+function transformEvent(
+  transforms: OutputTransform[],
+  event: ResponseStreamEvent,
+): ResponseStreamEvent[] {
+  return transforms.reduce<ResponseStreamEvent[]>(
+    (events, transform) => events.flatMap((current) => transform.handleEvent(current)),
+    [event],
+  );
 }
 
 class IncompleteResponseStreamError extends Error {
@@ -325,6 +351,17 @@ function* outputItemEvents(
           logprobs: content.logprobs ?? [],
           sequence_number: nextSequenceNumber(),
         };
+        for (const [annotationIndex, annotation] of content.annotations.entries()) {
+          yield {
+            type: "response.output_text.annotation.added",
+            annotation,
+            annotation_index: annotationIndex,
+            item_id: item.id,
+            output_index: outputIndex,
+            content_index: contentIndex,
+            sequence_number: nextSequenceNumber(),
+          };
+        }
         yield {
           type: "response.output_text.done",
           item_id: item.id,
