@@ -15,6 +15,7 @@ import {
   ResponseOutputMessage,
   ResponseStreamEvent,
 } from "openai/resources/responses/responses";
+import {CITATION_DELIMITER, CITATION_START, CITATION_STOP} from "./citation-marker";
 import {ResponseBody, streamEvents} from "./chat-service";
 
 const schemaValidator = new Ajv({strict: false});
@@ -26,11 +27,14 @@ export interface MockOpenAIClientOptions {
   returnEmptyStream?: boolean;
   validateResponseState?: boolean;
   returnFunctionCall?: boolean;
+  citeRetrievedContext?: boolean;
 }
 
 const EXPECTED_CONTINUATION = "Tell me more about my health records.";
 const MOCK_FUNCTION_CALL_ID = "call-plainly-emulator-get-resources";
 const MOCK_RESOURCE_SUMMARY = "Mock health record\nNested resource summary completed.";
+const MOCK_RETRIEVAL_QUERY = "lumbar fusion functional outcomes";
+const CITABLE_ID_PATTERN = /<citable id="([A-Za-z0-9_-]+)">/g;
 
 /** Creates the minimal OpenAI Responses client surface used by ChatService. */
 export function createMockOpenAIClient(
@@ -60,6 +64,11 @@ export function createMockOpenAIClient(
         }
         const responseId = `resp-plainly-emulator-${randomUUID()}`;
         const messageId = `msg-plainly-emulator-${randomUUID()}`;
+        // The RAG interceptor plans its queries with a forced tool call before the chat request is
+        // ever made, so a mock that cannot answer that call fails every retrieval-enabled request.
+        if (requestsContextRetrieval(body)) {
+          return mockRetrievalQueryResponse(body.model ?? "test-model", responseId);
+        }
         const hasGetResourcesTool = advertisesGetResourcesTool(body);
         if (options.returnFunctionCall && hasGetResourcesTool && !hasFunctionCallOutput(body)) {
           const response = mockFunctionCallResponse(
@@ -72,9 +81,12 @@ export function createMockOpenAIClient(
         if (options.returnFunctionCall && hasFunctionCallOutput(body)) {
           validateFunctionCallOutput(body);
         }
-        const outputText = options.returnFunctionCall && !hasGetResourcesTool ?
+        const baseText = options.returnFunctionCall && !hasGetResourcesTool ?
           MOCK_RESOURCE_SUMMARY :
           responseText;
+        const outputText = options.citeRetrievedContext ?
+          withCitationMarkers(baseText, body.instructions) :
+          baseText;
         if (body.stream) {
           return options.returnEmptyStream ?
             emptyResponseStream() :
@@ -97,6 +109,51 @@ export function createMockOpenAIClient(
       },
     },
   } as unknown as OpenAI;
+}
+
+/** Whether this is the RAG interceptor's planning call rather than the participant's chat request. */
+function requestsContextRetrieval(body: ResponseBody): boolean {
+  const toolChoice = body.tool_choice;
+  return typeof toolChoice === "object" && toolChoice !== null &&
+    "name" in toolChoice && toolChoice.name === "retrieve_context";
+}
+
+function mockRetrievalQueryResponse(model: string, responseId: string): Response {
+  return {
+    id: responseId,
+    object: "response",
+    created_at: 0,
+    status: "completed",
+    model,
+    output: [{
+      id: `item-plainly-emulator-${randomUUID()}`,
+      type: "function_call",
+      call_id: `call-plainly-emulator-${randomUUID()}`,
+      name: "retrieve_context",
+      arguments: JSON.stringify({query: MOCK_RETRIEVAL_QUERY}),
+      status: "completed",
+    }],
+    output_text: "",
+  } as unknown as Response;
+}
+
+/**
+ * Cites whatever the interceptor actually retrieved.
+ *
+ * The ids are read back out of the injected instructions rather than fixed here, so the emulator
+ * exercises the same resolution path a real answer does instead of a shape invented for the test.
+ */
+function withCitationMarkers(text: string, instructions?: string | null): string {
+  const ids = [...(instructions ?? "").matchAll(CITABLE_ID_PATTERN)]
+    .map(([, id]) => id)
+    .slice(0, 2);
+  if (ids.length === 0) {
+    return text;
+  }
+  const markers = ids
+    .map((id) => `${CITATION_START}cite${CITATION_DELIMITER}${id}${CITATION_STOP}`)
+    .join("");
+  return `${text}${markers}`;
 }
 
 function validateToolSchemas(tools: ResponseBody["tools"]): void {

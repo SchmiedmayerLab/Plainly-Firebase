@@ -50,6 +50,7 @@ const MOCK_SCENARIOS = {
   responseStreamingUnsupported: {rejectStreamingRequest: true},
   incrementalResponseState: {validateResponseState: true},
   responseToolCall: {returnFunctionCall: true},
+  responseCitations: {citeRetrievedContext: true},
 } as const satisfies Record<string, MockOpenAIClientOptions>;
 
 const CUSTOM_OPENAI_PLUGIN_NAME = "customOpenAI";
