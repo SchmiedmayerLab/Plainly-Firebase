@@ -84,3 +84,37 @@ describe("extractCitations", () => {
     assert.equal(stripStrayMarkerCharacters(`a${cite("one")}b`), "aciteoneb");
   });
 });
+
+describe("gaps left by a removed marker", () => {
+  it("closes the space a marker it could not trust stood in", () => {
+    const malformed = CITATION_START + "cite" + CITATION_DELIMITER + "not a valid id" +
+      CITATION_STOP;
+
+    // Nothing takes its place, so both of its spaces would otherwise reach the reader.
+    assert.equal(extractCitations(`Claim. ${malformed} Next.`).text, "Claim. Next.");
+  });
+
+  it("keeps the line break a marker on its own line stood in", () => {
+    const wrongFamily = CITATION_START + "quote" + CITATION_DELIMITER + "sabc12345c7" +
+      CITATION_STOP;
+
+    assert.equal(extractCitations(`Claim.\n${wrongFamily}\nNext.`).text, "Claim.\nNext.");
+  });
+
+  it("leaves spacing alone where the marker had a word on one side", () => {
+    const wrongFamily = CITATION_START + "quote" + CITATION_DELIMITER + "sabc12345c7" +
+      CITATION_STOP;
+
+    assert.equal(extractCitations(`Claim.${wrongFamily} Next.`).text, "Claim. Next.");
+    assert.equal(extractCitations(`Claim. ${wrongFamily}Next.`).text, "Claim. Next.");
+  });
+
+  it("reports a valid citation's index against the closed-up text", () => {
+    const malformed = CITATION_START + "cite" + CITATION_DELIMITER + "not a valid id" +
+      CITATION_STOP;
+    const result = extractCitations(`One. ${malformed} Two.${cite("sabc12345c7")}`);
+
+    assert.equal(result.text, "One. Two.");
+    assert.deepEqual(result.citations, [{sourceId: "sabc12345c7", index: 9}]);
+  });
+});

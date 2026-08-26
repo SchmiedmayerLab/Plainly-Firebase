@@ -74,6 +74,8 @@ Every <citable id="..."> block above is a source. Cite the sources your answer r
 - Cite every source that supports a statement. Where sources disagree, cite all of them.
 - Never write an id in the response text outside a citation, and never place a citation inside
   bold, italics, a heading, or a code block.
+- Never number the sources yourself. Write only the marker; the reference number a reader sees,
+  such as [1], is put in its place afterwards.
 - Cite only the ids listed above. Ids from earlier in this conversation no longer refer to
   anything and must not be reused.
 `;
@@ -126,6 +128,9 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
       }
 
       const queries = await this.determineQueries(body);
+      // Unreachable as `determineQueries` stands — it throws rather than return nothing — and kept
+      // only so a later change there cannot silently retrieve on an empty query.
+      /* c8 ignore next 4 */
       if (queries.length === 0) {
         console.warn("[AgenticRAG] No queries generated, skipping context injection");
         return {body};

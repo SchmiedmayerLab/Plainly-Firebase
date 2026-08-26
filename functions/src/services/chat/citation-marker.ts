@@ -68,15 +68,26 @@ export function extractCitations(raw: string): ExtractedCitations {
   const citations: ParsedCitation[] = [];
   let text = "";
   let readIndex = 0;
+  let dropped = false;
+
+  const append = (chunk: string) => {
+    if (chunk === "") {
+      return;
+    }
+    text += dropped && leavesGap(text, chunk) ? chunk.slice(1) : chunk;
+    dropped = false;
+  };
 
   MARKER_PATTERN.lastIndex = 0;
   for (let match = MARKER_PATTERN.exec(raw); match !== null; match = MARKER_PATTERN.exec(raw)) {
-    text += stripStrayMarkerCharacters(raw.slice(readIndex, match.index));
+    append(stripStrayMarkerCharacters(raw.slice(readIndex, match.index)));
     readIndex = MARKER_PATTERN.lastIndex;
 
     const [, family, body] = match;
     const [sourceId, locator] = body.split(CITATION_DELIMITER);
     if (family !== CITATION_FAMILY || !SOURCE_ID_PATTERN.test(sourceId ?? "")) {
+      // Nothing takes this marker's place, so the space it stood in has to close up behind it.
+      dropped = true;
       continue;
     }
     citations.push({
@@ -86,11 +97,22 @@ export function extractCitations(raw: string): ExtractedCitations {
     });
   }
 
-  text += stripStrayMarkerCharacters(raw.slice(readIndex));
+  append(stripStrayMarkerCharacters(raw.slice(readIndex)));
   return {text, citations};
 }
 
 /** Removes every citation control character, for text that must not carry a marker at all. */
 export function stripStrayMarkerCharacters(value: string): string {
   return value.replace(STRAY_MARKER_CHARACTER, "");
+}
+
+/**
+ * Whether a marker removed between these two halves would leave a gap a reader can see.
+ *
+ * The model writes its markers between words, so removing one without putting anything in its
+ * place leaves the whitespace from both sides behind — the double space in the answer text. Only
+ * a marker that leaves nothing needs this: one replaced by a reference number fills its own gap.
+ */
+export function leavesGap(before: string, after: string): boolean {
+  return /\s$/.test(before) && /^\s/.test(after);
 }

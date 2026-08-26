@@ -573,7 +573,7 @@ describe("ChatService citations", () => {
     });
 
     assert.doesNotMatch(chunks.join(""), new RegExp(String.fromCharCode(0xe200)));
-    assert.equal(textFromEvents(parseEvents(chunks)), "Fusion improves function.");
+    assert.equal(textFromEvents(parseEvents(chunks)), "Fusion improves function.[1]");
   });
 
   it("puts the citation on the finished message item, where the iOS client reads it", async () => {
@@ -626,7 +626,7 @@ describe("ChatService citations", () => {
     });
 
     const events = parseEvents(chunks);
-    assert.equal(textFromEvents(events), "Fusion improves function.");
+    assert.equal(textFromEvents(events), "Fusion improves function.[1]");
     const done = events.find((event) => event.type === "response.output_item.done");
     assert.equal(done?.item?.content?.[0].annotations?.length, 1);
     assert.equal(
@@ -640,7 +640,7 @@ describe("ChatService citations", () => {
 
     const result = JSON.parse(await service.chatNonStreaming({...request, stream: false}));
 
-    assert.equal(result.output[0].content[0].text, "Fusion improves function.");
+    assert.equal(result.output[0].content[0].text, "Fusion improves function.[1]");
     assert.equal(result.output[0].content[0].annotations[0].filename, source.title);
   });
 });

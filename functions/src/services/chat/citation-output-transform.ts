@@ -18,8 +18,8 @@ import {
   CITATION_START,
   CITATION_STOP,
   MAX_MARKER_LENGTH,
-  ParsedCitation,
   extractCitations,
+  leavesGap,
 } from "./citation-marker";
 import {CitationSource} from "./citation-source";
 import {OutputTransform} from "./output-transform";
@@ -30,20 +30,34 @@ type Annotation = ResponseOutputText["annotations"][number];
 interface PartState {
   /** Text withheld because it may yet turn out to be the start of a marker. */
   pending: string;
-  /** How much cleaned text has been forwarded, which is what an annotation's index counts. */
-  cleanLength: number;
+  /** How much rendered text has been forwarded, which is what an annotation's index counts. */
+  renderedLength: number;
   annotationCount: number;
   citedFiles: Set<string>;
+  /** A marker was dropped at the very end of the last delta, so its gap may still need closing. */
+  droppedAtEnd: boolean;
+  /** The last character forwarded, which is what closing that gap is decided against. */
+  tail: string;
+}
+
+/** One span of model output as a reader should see it, with the citations it announced. */
+interface RenderedText {
+  text: string;
+  annotations: Annotation[];
 }
 
 /**
  * Turns the citation markers the model was asked to write into Responses API annotations.
  *
- * The markers never reach the client: they are stripped from the streamed text, and the citation
- * each one carried is attached to the message instead, where a client can show it as a source.
+ * The marker itself never reaches the client. In its place goes the reference number a reader can
+ * follow — `[1]`, `[2]`, … — and the citation it carried is attached to the message as an
+ * annotation pointing at that number, so a client can show which source the claim rested on and
+ * where in the answer it was used.
  */
 export class CitationOutputTransform implements OutputTransform {
   private readonly parts = new Map<string, PartState>();
+  /** The number a reader sees for each document, by the order the answer first cites it. */
+  private readonly referenceNumbers = new Map<string, number>();
   private hasCited = false;
 
   constructor(private readonly sources: Map<string, CitationSource>) {}
@@ -57,7 +71,7 @@ export class CitationOutputTransform implements OutputTransform {
       // deltas alone, so a tail left in the buffer would simply go missing from the answer.
       return [
         ...this.flushPending(event),
-        {...event, text: extractCitations(event.text).text},
+        {...event, text: this.render(event.text, 0).text},
       ];
     case "response.content_part.added":
     case "response.content_part.done":
@@ -109,7 +123,8 @@ export class CitationOutputTransform implements OutputTransform {
   }
 
   /**
-   * Streams the delta on without its markers, then announces the citations it carried.
+   * Streams the delta on with reference numbers in place of its markers, then announces the
+   * citations those numbers stand for.
    *
    * A marker can straddle two deltas, so a trailing fragment that might be the start of one is held
    * back until the next delta completes it — or until it grows past the length any marker can have,
@@ -124,9 +139,12 @@ export class CitationOutputTransform implements OutputTransform {
     const boundary = isFinal ? buffered.length : markerBoundary(buffered);
     state.pending = buffered.slice(boundary);
 
-    const {text, citations} = extractCitations(buffered.slice(0, boundary));
-    const annotations = this.resolveAnnotations(citations, state, state.cleanLength);
-    state.cleanLength += text.length;
+    const {text, annotations} = this.render(
+      buffered.slice(0, boundary),
+      state.renderedLength,
+      state,
+    );
+    state.renderedLength += text.length;
 
     const events: ResponseStreamEvent[] = [];
     if (text.length > 0) {
@@ -173,11 +191,10 @@ export class CitationOutputTransform implements OutputTransform {
    * itself produced is provenance too, and replacing the array would throw it away.
    */
   private rewriteTextPart(part: ResponseOutputText): ResponseOutputText {
-    const {text, citations} = extractCitations(part.text);
+    const {text, annotations} = this.render(part.text, 0, newPartState());
     if (text === part.text) {
       return part;
     }
-    const annotations = this.resolveAnnotations(citations, newPartState(), 0);
     return {...part, text, annotations: [...part.annotations, ...annotations]};
   }
 
@@ -193,44 +210,92 @@ export class CitationOutputTransform implements OutputTransform {
   }
 
   /**
-   * Resolves parsed markers to annotations, at most one per document.
+   * Renders one span of raw model output: markers out, reference numbers in.
    *
-   * The model cites a chunk, but the reference a reader sees describes the document, so two chunks
-   * of one PDF would render as the same row twice.
+   * A `state` makes this the streaming case, where citations are announced as they are found and
+   * one document is announced only once. Without it nothing is announced, which is what re-deriving
+   * a text whose deltas were already forwarded needs.
    */
-  private resolveAnnotations(
-    citations: ParsedCitation[],
-    state: PartState,
-    offset: number,
-  ): Annotation[] {
+  private render(raw: string, offset: number, state?: PartState): RenderedText {
+    const {text, citations} = extractCitations(raw);
     const annotations: Annotation[] = [];
+    let out = "";
+    let readIndex = 0;
+    let dropped = state?.droppedAtEnd ?? false;
+
+    const append = (chunk: string) => {
+      if (chunk === "") {
+        return;
+      }
+      out += dropped && leavesGap(out || (state?.tail ?? ""), chunk) ? chunk.slice(1) : chunk;
+      dropped = false;
+    };
+
     for (const citation of citations) {
+      append(text.slice(readIndex, citation.index));
+      readIndex = citation.index;
+
       const source = this.sources.get(citation.sourceId);
       if (!source) {
         // A marker the model carried over from an earlier turn, which `previous_response_id` keeps
         // in its view of the conversation. Dropping it costs a citation; honouring it would credit
         // the claim to whichever document happens to hold that identifier now.
         console.warn(`[Citations] Ignoring a marker for unknown source '${citation.sourceId}'`);
+        dropped = true;
         continue;
       }
-      if (state.citedFiles.has(source.file)) {
-        continue;
-      }
-      state.citedFiles.add(source.file);
+
       this.hasCited = true;
-      annotations.push({
-        type: "file_citation",
-        file_id: source.file,
-        filename: source.title,
-        index: offset + citation.index,
-      });
+      const index = offset + out.length;
+      append(`[${this.referenceNumber(source)}]`);
+      // At most one annotation per document: the model cites a chunk, but the reference a reader
+      // sees describes the document, so two chunks of one PDF would render as the same row twice.
+      // The number itself is repeated, since every place the claim was used should carry it.
+      if (state && !state.citedFiles.has(source.file)) {
+        state.citedFiles.add(source.file);
+        annotations.push({
+          type: "file_citation",
+          file_id: source.file,
+          filename: source.title,
+          index,
+        });
+      }
     }
-    return annotations;
+    append(text.slice(readIndex));
+
+    if (state) {
+      state.droppedAtEnd = dropped;
+      state.tail = out.slice(-1) || state.tail;
+    }
+    return {text: out, annotations};
+  }
+
+  /**
+   * The reference number for one document, assigned when the answer first cites it.
+   *
+   * Kept for the whole response rather than per content part, so the streamed deltas and the
+   * finished response — which is rewritten again on every `response.*` event — agree on it.
+   */
+  private referenceNumber(source: CitationSource): number {
+    const assigned = this.referenceNumbers.get(source.file);
+    if (assigned !== undefined) {
+      return assigned;
+    }
+    const next = this.referenceNumbers.size + 1;
+    this.referenceNumbers.set(source.file, next);
+    return next;
   }
 }
 
 function newPartState(): PartState {
-  return {pending: "", cleanLength: 0, annotationCount: 0, citedFiles: new Set()};
+  return {
+    pending: "",
+    renderedLength: 0,
+    annotationCount: 0,
+    citedFiles: new Set(),
+    droppedAtEnd: false,
+    tail: "",
+  };
 }
 
 /** How much of the buffer is safe to forward, i.e. cannot be the beginning of an unfinished marker. */

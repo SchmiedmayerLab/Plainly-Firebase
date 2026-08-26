@@ -11,7 +11,8 @@ import {describe, it} from "node:test";
 import OpenAI from "openai";
 import {Response} from "openai/resources/responses/responses";
 import {AgenticContextChatInterceptor} from "../src/services/chat/agentic-context-chat-interceptor";
-import {ResponseBody} from "../src/services/chat/chat-service";
+import {ChatService, ResponseBody} from "../src/services/chat/chat-service";
+import {createMockOpenAIClient} from "../src/services/chat/mock-openai-client";
 import {ContextStore, RetrievedDocument} from "../src/services/context/context-store";
 
 const request: ResponseBody = {
@@ -373,13 +374,49 @@ describe("AgenticContextChatInterceptor citations", () => {
 
     const item = answered?.output[0];
     const content = item?.type === "message" ? item.content[0] : undefined;
-    assert.equal(content?.type === "output_text" ? content.text : "", "Fusion helps.");
+    assert.equal(content?.type === "output_text" ? content.text : "", "Fusion helps.[1]");
     assert.deepEqual(content?.type === "output_text" ? content.annotations : [], [{
       type: "file_citation",
       file_id: "guideline.pdf",
       // The reference a reader sees, not the file it happens to be stored under.
       filename: "Smith et al. (2021) — Lumbar Fusion Guideline",
       index: 13,
+    }]);
+  });
+
+  it("carries a retrieved chunk through a streamed answer as a numbered reference", async () => {
+    // The emulator's `responseCitations` scenario, end to end: the same mock serves the retrieval
+    // planner and the chat request, and cites back whatever the interceptor injected — so the ids
+    // are the ones `citationSourceId` produced, not a shape invented for this test.
+    const client = createMockOpenAIClient("Fusion improves function.", {
+      citeRetrievedContext: true,
+    });
+    const service = new ChatService(
+      client,
+      [new AgenticContextChatInterceptor(makeContextStore(async () => [guideline]), client)],
+    );
+
+    const chunks: string[] = [];
+    await service.chatStreaming({...request, stream: true}, async (chunk) => {
+      chunks.push(chunk);
+      return true;
+    });
+    const events = chunks.map((chunk) => JSON.parse(chunk.slice("data: ".length)));
+    const text = events
+      .filter((event) => event.type === "response.output_text.delta")
+      .map((event) => event.delta)
+      .join("");
+
+    assert.equal(text, "Fusion improves function.[1]");
+    // Not one marker character survives into the answer, and none leaves a gap behind.
+    assert.doesNotMatch(text, /[\uE200-\uE202]/u);
+    assert.doesNotMatch(text, / {2}/);
+    const done = events.find((event) => event.type === "response.output_item.done");
+    assert.deepEqual(done?.item?.content?.[0]?.annotations, [{
+      type: "file_citation",
+      file_id: "guideline.pdf",
+      filename: "Smith et al. (2021) — Lumbar Fusion Guideline",
+      index: "Fusion improves function.".length,
     }]);
   });
 
