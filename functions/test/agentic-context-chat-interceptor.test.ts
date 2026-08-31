@@ -384,7 +384,7 @@ describe("AgenticContextChatInterceptor citations", () => {
     }]);
   });
 
-  it("names a source by the url its metadata carried", async () => {
+  it("announces a source whose metadata carried a url as a web citation", async () => {
     const published: RetrievedDocument = {
       ...guideline,
       metadata: {...guideline.metadata, url: "https://example.org/lumbar-fusion-guideline"},
@@ -421,10 +421,12 @@ describe("AgenticContextChatInterceptor citations", () => {
     const item = answered?.output[0];
     const content = item?.type === "message" ? item.content[0] : undefined;
     assert.deepEqual(content?.type === "output_text" ? content.annotations : [], [{
-      type: "file_citation",
-      file_id: "guideline.pdf",
-      filename: "https://example.org/lumbar-fusion-guideline",
-      index: 13,
+      type: "url_citation",
+      url: "https://example.org/lumbar-fusion-guideline",
+      // Still the formatted reference; the url is what a client follows, not what it shows.
+      title: "Smith et al. (2021) — Lumbar Fusion Guideline",
+      start_index: 13,
+      end_index: 16,
     }]);
   });
 

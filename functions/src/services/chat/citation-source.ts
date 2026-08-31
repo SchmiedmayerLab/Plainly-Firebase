@@ -12,11 +12,11 @@ import {createHash} from "node:crypto";
 export interface CitationSource {
   /** The identifier the model writes in a marker. */
   id: string;
-  /** The stored filename, which becomes the annotation's `file_id`. */
+  /** The stored filename, which becomes a file citation's `file_id`. */
   file: string;
-  /** The human-readable reference, which becomes the annotation's `filename` without a `url`. */
+  /** The human-readable reference, which names the source in either kind of annotation. */
   title: string;
-  /** Where the document can be read, which a client can follow. Preferred as the `filename`. */
+  /** Where the document can be read. A source that has one is announced as a `url_citation`. */
   url?: string;
 }
 

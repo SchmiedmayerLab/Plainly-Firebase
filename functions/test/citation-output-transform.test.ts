@@ -207,14 +207,28 @@ describe("CitationOutputTransform streaming", () => {
     );
   });
 
-  it("names the source by its url where the document carries one", () => {
+  it("announces a document that carries a url as a web citation", () => {
     const result = stream(transform(PUBLISHED), [`Fusion helps.${cite(PUBLISHED.id)}`]);
 
-    // A client can follow this one; the formatted reference is what a document without a url gets.
+    // A client can link straight to this one, which a file citation gives it no way to do.
+    assert.deepEqual(result.annotations, [{
+      type: "url_citation",
+      url: "https://example.org/published-review",
+      title: PUBLISHED.title,
+      // The span the reference number occupies: "Fusion helps." is 13 characters, "[1]" is 3.
+      start_index: 13,
+      end_index: 16,
+    }]);
+    assert.equal(result.text.slice(13, 16), "[1]");
+  });
+
+  it("still announces a document without a url as a file citation", () => {
+    const result = stream(transform(GUIDELINE), [`Fusion helps.${cite(GUIDELINE.id)}`]);
+
     assert.deepEqual(result.annotations, [{
       type: "file_citation",
-      file_id: "published.pdf",
-      filename: "https://example.org/published-review",
+      file_id: "guideline.pdf",
+      filename: GUIDELINE.title,
       index: 13,
     }]);
   });
@@ -471,6 +485,31 @@ describe("CitationOutputTransform repeated references", () => {
     ]);
 
     assert.equal(result.text, "Fusion helps.[1] Rest too.");
+  });
+
+  it("collapses a repeat that another source stands between", () => {
+    const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK, TRIAL), [
+      `Both agree.${cite(GUIDELINE.id)} ${cite(TRIAL.id)} ${cite(GUIDELINE_OTHER_CHUNK.id)} Next.`,
+    ]);
+
+    // One claim resting on two sources, so the guideline is listed once however the model happened
+    // to order its markers — "[1] [2] [1]" and "[1] [1] [2]" are the same two sources.
+    assert.equal(result.text, "Both agree.[1] [2] Next.");
+    assert.equal(result.annotations.length, 2);
+  });
+
+  it("collapses the same run whichever order the markers arrive in", () => {
+    const raw = (...ids: string[]) => `Both agree.${ids.map(cite).join(" ")} Next.`;
+    const orders = [
+      [GUIDELINE.id, TRIAL.id, GUIDELINE_OTHER_CHUNK.id],
+      [GUIDELINE.id, GUIDELINE_OTHER_CHUNK.id, TRIAL.id],
+      [GUIDELINE.id, TRIAL.id, TRIAL.id],
+    ];
+
+    for (const ids of orders) {
+      const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK, TRIAL), [raw(...ids)]);
+      assert.equal(result.text, "Both agree.[1] [2] Next.", ids.join(" "));
+    }
   });
 
   it("keeps a number the answer comes back to after some prose", () => {

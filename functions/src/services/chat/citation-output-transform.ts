@@ -38,8 +38,8 @@ interface PartState {
   droppedAtEnd: boolean;
   /** The last character forwarded, which is what closing that gap is decided against. */
   tail: string;
-  /** The reference number standing at the end of the output, while only whitespace has followed it. */
-  standingNumber?: number;
+  /** The reference numbers in the run at the end of the output, which nothing but whitespace follows. */
+  standingNumbers: Set<number>;
 }
 
 /** One span of model output as a reader should see it, with the citations it announced. */
@@ -224,17 +224,18 @@ export class CitationOutputTransform implements OutputTransform {
     let out = "";
     let readIndex = 0;
     let dropped = state?.droppedAtEnd ?? false;
-    let standingNumber = state?.standingNumber;
+    const standingNumbers = new Set(state?.standingNumbers);
 
-    const append = (chunk: string) => {
+    const append = (chunk: string, isReference = false) => {
       if (chunk === "") {
         return;
       }
       out += dropped && leavesGap(out || (state?.tail ?? ""), chunk) ? chunk.slice(1) : chunk;
       dropped = false;
-      // Whitespace keeps the number standing; anything a reader can see ends its reach.
-      if (/\S/.test(chunk)) {
-        standingNumber = undefined;
+      // Whitespace holds a run of references together, and so does another reference. Anything
+      // else a reader can see is the next claim, which starts a run of its own.
+      if (!isReference && /\S/.test(chunk)) {
+        standingNumbers.clear();
       }
     };
 
@@ -254,28 +255,24 @@ export class CitationOutputTransform implements OutputTransform {
 
       this.hasCited = true;
       const number = this.referenceNumber(source);
-      if (number === standingNumber) {
-        // The same number twice with nothing but whitespace between them — the model marked two
-        // chunks of one document, or one chunk twice. A reader has one reference to follow, so the
-        // repeat is dropped and the space it stood in closes up behind it.
+      if (standingNumbers.has(number)) {
+        // This number already stands in the run of references the claim ends on — the model marked
+        // two chunks of one document, or one chunk twice. A reader has one reference to follow, so
+        // the repeat is dropped and the space it stood in closes up behind it.
         dropped = true;
         continue;
       }
 
       const index = offset + out.length;
-      append(`[${number}]`);
-      standingNumber = number;
+      const rendered = `[${number}]`;
+      append(rendered, true);
+      standingNumbers.add(number);
       // At most one annotation per document: the model cites a chunk, but the reference a reader
       // sees describes the document, so two chunks of one PDF would render as the same row twice.
       // The number itself is repeated where the claim recurs later in the answer.
       if (state && !state.citedFiles.has(source.file)) {
         state.citedFiles.add(source.file);
-        annotations.push({
-          type: "file_citation",
-          file_id: source.file,
-          filename: source.url ?? source.title,
-          index,
-        });
+        annotations.push(citationAnnotation(source, index, rendered.length));
       }
     }
     append(text.slice(readIndex));
@@ -283,7 +280,7 @@ export class CitationOutputTransform implements OutputTransform {
     if (state) {
       state.droppedAtEnd = dropped;
       state.tail = out.slice(-1) || state.tail;
-      state.standingNumber = standingNumber;
+      state.standingNumbers = standingNumbers;
     }
     return {text: out, annotations};
   }
@@ -305,6 +302,27 @@ export class CitationOutputTransform implements OutputTransform {
   }
 }
 
+/**
+ * How one source is announced.
+ *
+ * A document that carries an address a reader can open is a web citation, so a client can link
+ * straight to it. One that exists only in the study's storage is a file citation, where the
+ * reference the reader sees has to stand in for an address there is none of.
+ */
+function citationAnnotation(source: CitationSource, index: number, length: number): Annotation {
+  if (source.url === undefined) {
+    return {type: "file_citation", file_id: source.file, filename: source.title, index};
+  }
+  return {
+    type: "url_citation",
+    url: source.url,
+    title: source.title,
+    // The span the reference number occupies, which is what a url citation is anchored by.
+    start_index: index,
+    end_index: index + length,
+  };
+}
+
 function newPartState(): PartState {
   return {
     pending: "",
@@ -313,6 +331,7 @@ function newPartState(): PartState {
     citedFiles: new Set(),
     droppedAtEnd: false,
     tail: "",
+    standingNumbers: new Set(),
   };
 }
 
