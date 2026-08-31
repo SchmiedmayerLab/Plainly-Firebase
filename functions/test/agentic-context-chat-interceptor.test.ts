@@ -384,6 +384,52 @@ describe("AgenticContextChatInterceptor citations", () => {
     }]);
   });
 
+  it("announces a source whose metadata carried a url as a web citation", async () => {
+    const published: RetrievedDocument = {
+      ...guideline,
+      metadata: {...guideline.metadata, url: "https://example.org/lumbar-fusion-guideline"},
+    };
+    const interceptor = new AgenticContextChatInterceptor(
+      makeContextStore(async () => [published]),
+      responseClient(async () => toolCallResponse([{query: "fusion"}])),
+    );
+
+    const result = await interceptor.intercept(request);
+    const id = /<citable id="([A-Za-z0-9_-]+)">/.exec(result.body.instructions ?? "")?.[1];
+    assert.ok(id);
+    // The url is for the reader, not the model: it stays out of the injected chunk header.
+    assert.doesNotMatch(result.body.instructions ?? "", /example\.org/);
+
+    const marker = String.fromCharCode(0xe200) + "cite" + String.fromCharCode(0xe202) +
+      id + String.fromCharCode(0xe201);
+    const answered = result.outputTransform?.transformResponse({
+      id: "resp-1",
+      object: "response",
+      created_at: 0,
+      status: "completed",
+      model: "test-model",
+      output: [{
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{type: "output_text", text: `Fusion helps.${marker}`, annotations: []}],
+      }],
+      output_text: "",
+    } as unknown as Response);
+
+    const item = answered?.output[0];
+    const content = item?.type === "message" ? item.content[0] : undefined;
+    assert.deepEqual(content?.type === "output_text" ? content.annotations : [], [{
+      type: "url_citation",
+      url: "https://example.org/lumbar-fusion-guideline",
+      // Still the formatted reference; the url is what a client follows, not what it shows.
+      title: "Smith et al. (2021) — Lumbar Fusion Guideline",
+      start_index: 13,
+      end_index: 16,
+    }]);
+  });
+
   it("carries a retrieved chunk through a streamed answer as a numbered reference", async () => {
     // The emulator's `responseCitations` scenario, end to end: the same mock serves the retrieval
     // planner and the chat request, and cites back whatever the interceptor injected — so the ids

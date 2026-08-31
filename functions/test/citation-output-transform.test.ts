@@ -32,6 +32,13 @@ const TRIAL: CitationSource = {
   file: "trial.pdf",
   title: "Doe (2019) — Conservative Management Trial",
 };
+/** A document whose PDF metadata carried the address it can be read at. */
+const PUBLISHED: CitationSource = {
+  id: "spublishedc0",
+  file: "published.pdf",
+  title: "Roe (2024) — Published Review",
+  url: "https://example.org/published-review",
+};
 
 function transform(...sources: CitationSource[]): CitationOutputTransform {
   return new CitationOutputTransform(new Map(sources.map((source) => [source.id, source])));
@@ -198,6 +205,32 @@ describe("CitationOutputTransform streaming", () => {
       result.annotations.map((annotation) => (annotation as {index: number}).index),
       [11, 14],
     );
+  });
+
+  it("announces a document that carries a url as a web citation", () => {
+    const result = stream(transform(PUBLISHED), [`Fusion helps.${cite(PUBLISHED.id)}`]);
+
+    // A client can link straight to this one, which a file citation gives it no way to do.
+    assert.deepEqual(result.annotations, [{
+      type: "url_citation",
+      url: "https://example.org/published-review",
+      title: PUBLISHED.title,
+      // The span the reference number occupies: "Fusion helps." is 13 characters, "[1]" is 3.
+      start_index: 13,
+      end_index: 16,
+    }]);
+    assert.equal(result.text.slice(13, 16), "[1]");
+  });
+
+  it("still announces a document without a url as a file citation", () => {
+    const result = stream(transform(GUIDELINE), [`Fusion helps.${cite(GUIDELINE.id)}`]);
+
+    assert.deepEqual(result.annotations, [{
+      type: "file_citation",
+      file_id: "guideline.pdf",
+      filename: GUIDELINE.title,
+      index: 13,
+    }]);
   });
 
   it("drops a marker for a source this request never issued", (context) => {
@@ -431,6 +464,134 @@ describe("CitationOutputTransform gaps", () => {
     assert.equal(streamed, "One.[1] Two.[2] Three.[1]");
     // A client that rebuilt the answer from the deltas must not be contradicted by the done event.
     assert.equal(done?.type === "response.output_text.done" ? done.text : "", streamed);
+  });
+});
+
+describe("CitationOutputTransform repeated references", () => {
+  it("shows one number where two chunks of a document are marked side by side", () => {
+    const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK), [
+      `Fusion helps.${cite(GUIDELINE.id)} ${cite(GUIDELINE_OTHER_CHUNK.id)} Rest too.`,
+    ]);
+
+    // The reader has one reference to follow, so "[1] [1]" is one chip, and the space the second
+    // stood in closes up behind it.
+    assert.equal(result.text, "Fusion helps.[1] Rest too.");
+    assert.equal(result.annotations.length, 1);
+  });
+
+  it("collapses a marker the model wrote twice for the same chunk", () => {
+    const result = stream(transform(GUIDELINE), [
+      `Fusion helps.${cite(GUIDELINE.id)}${cite(GUIDELINE.id)} Rest too.`,
+    ]);
+
+    assert.equal(result.text, "Fusion helps.[1] Rest too.");
+  });
+
+  it("collapses a repeat that another source stands between", () => {
+    const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK, TRIAL), [
+      `Both agree.${cite(GUIDELINE.id)} ${cite(TRIAL.id)} ${cite(GUIDELINE_OTHER_CHUNK.id)} Next.`,
+    ]);
+
+    // One claim resting on two sources, so the guideline is listed once however the model happened
+    // to order its markers — "[1] [2] [1]" and "[1] [1] [2]" are the same two sources.
+    assert.equal(result.text, "Both agree.[1] [2] Next.");
+    assert.equal(result.annotations.length, 2);
+  });
+
+  it("collapses the same run whichever order the markers arrive in", () => {
+    const raw = (...ids: string[]) => `Both agree.${ids.map(cite).join(" ")} Next.`;
+    const orders = [
+      [GUIDELINE.id, TRIAL.id, GUIDELINE_OTHER_CHUNK.id],
+      [GUIDELINE.id, GUIDELINE_OTHER_CHUNK.id, TRIAL.id],
+      [GUIDELINE.id, TRIAL.id, TRIAL.id],
+    ];
+
+    for (const ids of orders) {
+      const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK, TRIAL), [raw(...ids)]);
+      assert.equal(result.text, "Both agree.[1] [2] Next.", ids.join(" "));
+    }
+  });
+
+  it("keeps a number the answer comes back to after some prose", () => {
+    const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK), [
+      `One.${cite(GUIDELINE.id)} Two.${cite(GUIDELINE_OTHER_CHUNK.id)}`,
+    ]);
+
+    // Only an immediate repeat is noise; the same source supporting a second claim is not.
+    assert.equal(result.text, "One.[1] Two.[1]");
+  });
+
+  it("keeps two numbers a punctuation mark separates", () => {
+    const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK), [
+      `Fusion helps.${cite(GUIDELINE.id)}, ${cite(GUIDELINE_OTHER_CHUNK.id)} and rest too.`,
+    ]);
+
+    assert.equal(result.text, "Fusion helps.[1], [1] and rest too.");
+  });
+
+  it("collapses across the delta boundary the repeat arrives on", () => {
+    const result = stream(transform(GUIDELINE, GUIDELINE_OTHER_CHUNK), [
+      `Fusion helps.${cite(GUIDELINE.id)} `,
+      cite(GUIDELINE_OTHER_CHUNK.id),
+      " Rest too.",
+    ]);
+
+    // The repeat is alone in its delta, so the space that has to close is one the previous delta
+    // already forwarded.
+    assert.equal(result.text, "Fusion helps.[1] Rest too.");
+  });
+
+  it("reports the same collapsed text on the done event as it streamed", () => {
+    const subject = transform(GUIDELINE, GUIDELINE_OTHER_CHUNK);
+    const raw = `Fusion helps.${cite(GUIDELINE.id)} ${cite(GUIDELINE_OTHER_CHUNK.id)} Rest too.`;
+    const events = [
+      ...subject.handleEvent(delta(raw.slice(0, 20))),
+      ...subject.handleEvent(delta(raw.slice(20))),
+      ...subject.handleEvent({
+        type: "response.output_text.done",
+        text: raw,
+        item_id: "msg-1",
+        output_index: 0,
+        content_index: 0,
+        logprobs: [],
+        sequence_number: 2,
+      }),
+    ];
+
+    const streamed = events
+      .filter((event) => event.type === "response.output_text.delta")
+      .map((event) => event.delta)
+      .join("");
+    const done = events.find((event) => event.type === "response.output_text.done");
+
+    assert.equal(streamed, "Fusion helps.[1] Rest too.");
+    // A client that rebuilt the answer from the deltas must not be contradicted by the done event.
+    assert.equal(done?.type === "response.output_text.done" ? done.text : "", streamed);
+  });
+
+  it("keeps both numbers where a content part boundary falls between them", () => {
+    const subject = transform(GUIDELINE, GUIDELINE_OTHER_CHUNK);
+    const parts = [
+      {...delta(`Fusion helps.${cite(GUIDELINE.id)}`, 0), content_index: 0},
+      {...delta(`${cite(GUIDELINE_OTHER_CHUNK.id)} Rest too.`, 1), content_index: 1},
+    ];
+    const text = parts
+      .flatMap((event) => subject.handleEvent(event))
+      .filter((event) => event.type === "response.output_text.delta")
+      .map((event) => event.delta)
+      .join("");
+
+    // A part boundary is a real break in the answer, so the second part opens with its own
+    // reference rather than one collapsed into text a reader met somewhere else.
+    assert.equal(text, "Fusion helps.[1][1] Rest too.");
+  });
+
+  it("collapses the repeat on a finished response too", () => {
+    const raw = `Fusion helps.${cite(GUIDELINE.id)} ${cite(GUIDELINE_OTHER_CHUNK.id)} Rest too.`;
+    const result = transform(GUIDELINE, GUIDELINE_OTHER_CHUNK).transformResponse(message(raw));
+
+    assert.equal(messageText(result), "Fusion helps.[1] Rest too.");
+    assert.equal(messageAnnotations(result).length, 1);
   });
 });
 
