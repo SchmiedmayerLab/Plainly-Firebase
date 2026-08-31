@@ -14,8 +14,10 @@ export interface CitationSource {
   id: string;
   /** The stored filename, which becomes the annotation's `file_id`. */
   file: string;
-  /** The human-readable reference, which becomes the annotation's `filename`. */
+  /** The human-readable reference, which becomes the annotation's `filename` without a `url`. */
   title: string;
+  /** Where the document can be read, which a client can follow. Preferred as the `filename`. */
+  url?: string;
 }
 
 /**

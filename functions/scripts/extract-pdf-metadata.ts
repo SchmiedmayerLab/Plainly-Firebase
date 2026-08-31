@@ -21,6 +21,7 @@ const STANDARD_COLUMNS: (keyof DocumentMetadata)[] = [
   "producer",
   "creationDate",
   "modDate",
+  "url",
 ];
 
 const KNOWN_COLUMNS = [...FEATURED_COLUMNS, ...STANDARD_COLUMNS];

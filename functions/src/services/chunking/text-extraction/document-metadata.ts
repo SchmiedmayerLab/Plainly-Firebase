@@ -23,6 +23,8 @@ export interface DocumentMetadata {
   creationDate?: string;
   /** ISO 8601 */
   modDate?: string;
+  /** Where the document can be read, e.g. a publisher's landing page. */
+  url?: string;
   /** Explicit custom "year"/"Year" field wins; otherwise derived from creationDate. */
   year?: number;
   [customKey: string]: unknown;

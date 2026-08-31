@@ -38,6 +38,8 @@ interface PartState {
   droppedAtEnd: boolean;
   /** The last character forwarded, which is what closing that gap is decided against. */
   tail: string;
+  /** The reference number standing at the end of the output, while only whitespace has followed it. */
+  standingNumber?: number;
 }
 
 /** One span of model output as a reader should see it, with the citations it announced. */
@@ -222,6 +224,7 @@ export class CitationOutputTransform implements OutputTransform {
     let out = "";
     let readIndex = 0;
     let dropped = state?.droppedAtEnd ?? false;
+    let standingNumber = state?.standingNumber;
 
     const append = (chunk: string) => {
       if (chunk === "") {
@@ -229,6 +232,10 @@ export class CitationOutputTransform implements OutputTransform {
       }
       out += dropped && leavesGap(out || (state?.tail ?? ""), chunk) ? chunk.slice(1) : chunk;
       dropped = false;
+      // Whitespace keeps the number standing; anything a reader can see ends its reach.
+      if (/\S/.test(chunk)) {
+        standingNumber = undefined;
+      }
     };
 
     for (const citation of citations) {
@@ -246,17 +253,27 @@ export class CitationOutputTransform implements OutputTransform {
       }
 
       this.hasCited = true;
+      const number = this.referenceNumber(source);
+      if (number === standingNumber) {
+        // The same number twice with nothing but whitespace between them — the model marked two
+        // chunks of one document, or one chunk twice. A reader has one reference to follow, so the
+        // repeat is dropped and the space it stood in closes up behind it.
+        dropped = true;
+        continue;
+      }
+
       const index = offset + out.length;
-      append(`[${this.referenceNumber(source)}]`);
+      append(`[${number}]`);
+      standingNumber = number;
       // At most one annotation per document: the model cites a chunk, but the reference a reader
       // sees describes the document, so two chunks of one PDF would render as the same row twice.
-      // The number itself is repeated, since every place the claim was used should carry it.
+      // The number itself is repeated where the claim recurs later in the answer.
       if (state && !state.citedFiles.has(source.file)) {
         state.citedFiles.add(source.file);
         annotations.push({
           type: "file_citation",
           file_id: source.file,
-          filename: source.title,
+          filename: source.url ?? source.title,
           index,
         });
       }
@@ -266,6 +283,7 @@ export class CitationOutputTransform implements OutputTransform {
     if (state) {
       state.droppedAtEnd = dropped;
       state.tail = out.slice(-1) || state.tail;
+      state.standingNumber = standingNumber;
     }
     return {text: out, annotations};
   }

@@ -176,7 +176,14 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
   private citationSources(docs: RetrievedDocument[]): Map<string, CitationSource> {
     return new Map(docs.map((doc): [string, CitationSource] => {
       const id = citationSourceId(doc.file, doc.chunkId);
-      return [id, {id, file: doc.file, title: this.formatter.citationTitle(doc)}];
+      // The metadata came out of an uploaded PDF, so the url is only taken when it is one.
+      const url = doc.metadata?.url;
+      return [id, {
+        id,
+        file: doc.file,
+        title: this.formatter.citationTitle(doc),
+        ...(typeof url === "string" && url !== "" ? {url} : {}),
+      }];
     }));
   }
 

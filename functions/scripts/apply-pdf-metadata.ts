@@ -121,6 +121,12 @@ async function applyMetadata(filePath: string, record: Record<string, string>): 
     infoDict.set(PDFName.of("Year"), PDFHexString.fromText(record.year));
   }
 
+  // "Url" rather than "URL": the extractor lower-cases only the first letter of a custom key, so
+  // "URL" would come back out as "uRL".
+  if (record.url) {
+    infoDict.set(PDFName.of("Url"), PDFHexString.fromText(record.url));
+  }
+
   if (record.customMetadata) {
     try {
       const customObj = JSON.parse(record.customMetadata);
