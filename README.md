@@ -70,7 +70,7 @@ Create the local Functions secret file from the provided example:
 cp functions/.secret.local.example functions/.secret.local
 ```
 
-Replace the placeholder in `functions/.secret.local` with a development `OPENAI_API_KEY`. The backend defaults to Stanford's production AI API gateway. Never commit this file.
+Replace the placeholders in `functions/.secret.local` with a development `OPENAI_API_KEY` and the `OPENAI_BASE_URL` that key belongs to. Both are secrets, so neither has a value until you set one: a missing base URL leaves the OpenAI SDK on its own default endpoint, where a gateway key is rejected as unauthenticated. Never commit this file.
 
 ### Run the Backend
 
