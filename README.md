@@ -47,7 +47,7 @@ flowchart LR
 
 The `chat` function requires Firebase authentication and a `studyId` query parameter. Set `ragEnabled=true` to retrieve study-specific context before generating a response. Streaming and non-streaming Responses API payloads are supported. If the Stanford gateway rejects streaming with HTTP 500 before emitting any event, the backend retries the same intercepted request once without streaming and adapts the result into canonical Responses events. It never replays a request after the gateway has emitted a response identifier or other event.
 
-The endpoint accepts only Plainly's configured model identifiers and client-side function tools; server-executed tools, background jobs, conversations, file inputs, and remote images are rejected. The app disables participant attachments, while the endpoint retains a bounded inline JPEG/PNG path for study-authored image questionnaires. The backend enforces stored response state because clients use `previous_response_id` for multi-turn conversations. Before any response identifier is returned, its SHA-256 digest is bound to the authenticated Firebase user and study in a server-only Firestore collection. Unknown, expired, cross-user, and cross-study continuations are rejected, and the ownership records expire after 30 days.
+The endpoint accepts only Plainly's configured model identifiers and client-side function tools. A request with `generatesImages=true` may also offer the hosted image generation tool, which the app sends only for a study that enables it. Other server-executed tools, background jobs, conversations, file inputs, and remote images are rejected. The app disables participant attachments, while the endpoint retains a bounded inline JPEG/PNG path for study-authored image questionnaires. The backend enforces stored response state because clients use `previous_response_id` for multi-turn conversations. Before any response identifier is returned, its SHA-256 digest is bound to the authenticated Firebase user and study in a server-only Firestore collection. Unknown, expired, cross-user, and cross-study continuations are rejected, and the ownership records expire after 30 days.
 
 Stored provider responses may have their own retention period. Each deployment must verify that the gateway's response-retention and deletion policies match the approved consent, study protocol, and Stanford data-handling requirements before launch.
 
@@ -70,7 +70,7 @@ Create the local Functions secret file from the provided example:
 cp functions/.secret.local.example functions/.secret.local
 ```
 
-Replace the placeholder in `functions/.secret.local` with a development `OPENAI_API_KEY`. The backend defaults to Stanford's production AI API gateway. Never commit this file.
+Replace the placeholders in `functions/.secret.local` with a development `OPENAI_API_KEY` and the `OPENAI_BASE_URL` that key belongs to. Both are secrets, so neither has a value until you set one: a missing base URL leaves the OpenAI SDK on its own default endpoint, where a gateway key is rejected as unauthenticated. Never commit this file.
 
 ### Run the Backend
 

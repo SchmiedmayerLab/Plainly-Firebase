@@ -56,6 +56,8 @@ export async function handleChatRequest(
   }
 
   const ragEnabled = req.rawRequest.query.ragEnabled === "true";
+  // Per study, like RAG: the app asks for the hosted image generation tool only where a study allows it.
+  const generatesImages = req.rawRequest.query.generatesImages === "true";
 
   const studyId = req.rawRequest.query.studyId;
   if (
@@ -67,7 +69,7 @@ export async function handleChatRequest(
 
   let responseBody;
   try {
-    responseBody = parseResponseRequest(req.data);
+    responseBody = parseResponseRequest(req.data, {generatesImages});
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid Responses API request";
     // Logged because a rejected request never reaches the handler below, and a client that
