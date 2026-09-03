@@ -10,7 +10,7 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "test": "tsx --test test/**/*.test.ts",
-    "test:coverage": "c8 --all --src src --exclude \"src/services/chunking/chunk.ts\" --exclude \"src/services/chunking/text-extraction/document-metadata.ts\" --exclude \"src/services/chunking/text-extraction/text-extractor.ts\" --exclude \"src/services/context/context-store.ts\" --reporter=text --reporter=lcov --check-coverage --lines 40 --statements 40 --branches 70 --functions 80 tsx --test test/**/*.test.ts",
+    "test:coverage": "c8 --all --src src --exclude \"src/services/chat/chat-interceptor.ts\" --exclude \"src/services/chat/output-transform.ts\" --exclude \"src/services/chunking/chunk.ts\" --exclude \"src/services/chunking/text-extraction/document-metadata.ts\" --exclude \"src/services/chunking/text-extraction/text-extractor.ts\" --exclude \"src/services/context/context-store.ts\" --reporter=text --reporter=lcov --check-coverage --lines 40 --statements 40 --branches 70 --functions 80 tsx --test test/**/*.test.ts",
     "test:diff-coverage": "node scripts/check-diff-coverage.mjs",
     "test:integration": "tsx --test --test-concurrency=1 test/integration/**/*.integration.ts",
     "deploy": "firebase deploy --only functions",
@@ -28,6 +28,7 @@
     "firebase-functions": "^7.3.2",
     "genkit": "^1.40.1",
     "openai": "^7.1.0",
+    "pdf-lib": "^1.17.1",
     "unpdf": "^1.8.0"
   },
   "devDependencies": {

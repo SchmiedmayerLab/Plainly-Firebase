@@ -17,6 +17,11 @@ import {
   createIndexingService,
 } from "../src/services/create-services";
 import {ChatService, ResponseBody} from "../src/services/chat/chat-service";
+import {
+  CITATION_DELIMITER,
+  CITATION_START,
+  CITATION_STOP,
+} from "../src/services/chat/citation-marker";
 import {createMockOpenAIClient} from "../src/services/chat/mock-openai-client";
 
 const response = "Plainly Firebase end-to-end response.";
@@ -380,3 +385,87 @@ interface ParsedEvent {
 function parseEvents(chunks: string[]): ParsedEvent[] {
   return chunks.map((chunk) => JSON.parse(chunk.slice("data: ".length)));
 }
+
+describe("mock OpenAI client retrieval", () => {
+  const marker = (sourceId: string) =>
+    CITATION_START + "cite" + CITATION_DELIMITER + sourceId + CITATION_STOP;
+
+  function citableInstructions(...ids: string[]): string {
+    return ids.map((id) => `<citable id="${id}">Evidence.</citable>`).join("\n");
+  }
+
+  it("answers the retrieval planner's forced tool call with a query", async () => {
+    const client = createMockOpenAIClient(response);
+
+    // The RAG interceptor plans its queries before the chat request is ever made, so a mock that
+    // cannot answer this call fails every retrieval-enabled request.
+    const result = await client.responses.create({
+      model: "test-model",
+      input: [{role: "user", content: "Will fusion help me?"}],
+      stream: false,
+      tools: [{
+        type: "function",
+        name: "retrieve_context",
+        description: "Retrieve relevant context from the knowledge base using a search query.",
+        parameters: {
+          type: "object",
+          properties: {query: {type: "string"}},
+          required: ["query"],
+        },
+        strict: false,
+      }],
+      tool_choice: {type: "function", name: "retrieve_context"},
+    });
+
+    const call = result.output.find((item) => item.type === "function_call");
+    assert.equal(call?.name, "retrieve_context");
+    assert.ok(call?.call_id);
+    assert.deepEqual(JSON.parse(call?.arguments ?? "{}"), {
+      query: "lumbar fusion functional outcomes",
+    });
+  });
+
+  it("cites the sources the interceptor actually injected", async () => {
+    const client = createMockOpenAIClient(response, {citeRetrievedContext: true});
+
+    const result = await client.responses.create({
+      model: "test-model",
+      input: [{role: "user", content: "Hello"}],
+      stream: false,
+      instructions: citableInstructions("sabc12345c0", "sdef67890c3"),
+    });
+
+    // The ids come back out of the instructions, so the emulator exercises the same resolution
+    // path a real answer does rather than a shape invented here.
+    assert.equal(
+      result.output_text,
+      `${response}${marker("sabc12345c0")}${marker("sdef67890c3")}`,
+    );
+  });
+
+  it("cites at most the first two injected sources", async () => {
+    const client = createMockOpenAIClient(response, {citeRetrievedContext: true});
+
+    const result = await client.responses.create({
+      model: "test-model",
+      input: [{role: "user", content: "Hello"}],
+      stream: false,
+      instructions: citableInstructions("sabc12345c0", "sdef67890c3", "sghi13579c7"),
+    });
+
+    assert.doesNotMatch(result.output_text, /sghi13579c7/);
+  });
+
+  it("leaves the answer unmarked when nothing was retrieved to cite", async () => {
+    const client = createMockOpenAIClient(response, {citeRetrievedContext: true});
+
+    const result = await client.responses.create({
+      model: "test-model",
+      input: [{role: "user", content: "Hello"}],
+      stream: false,
+      instructions: "You are a helpful assistant.",
+    });
+
+    assert.equal(result.output_text, response);
+  });
+});

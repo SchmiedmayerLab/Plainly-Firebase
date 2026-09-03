@@ -111,4 +111,18 @@ describe("PDFTextExtractor", () => {
     assert.deepEqual(metadata, {publisher: "Spine Journal"});
     assert.equal(Object.getPrototypeOf(metadata), Object.prototype);
   });
+
+  it("carries a document's url through as its own field", () => {
+    const extractor = new PDFTextExtractor() as unknown as {
+      extractMetadata(info: Record<string, unknown>): Record<string, unknown> | undefined;
+    };
+
+    // What `scripts/apply-pdf-metadata.ts` writes for the CSV's `url` column. The key is "Url" and
+    // not "URL" because only the first letter is lower-cased on the way back out.
+    const metadata = extractor.extractMetadata({
+      Custom: {Url: "https://example.org/lumbar-fusion-guideline"},
+    });
+
+    assert.deepEqual(metadata, {url: "https://example.org/lumbar-fusion-guideline"});
+  });
 });

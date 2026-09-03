@@ -5,6 +5,7 @@
 #
 # SPDX-License-Identifier: MIT
 #
+.claude/
 
 # macOS metadata
 .DS_Store

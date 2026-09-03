@@ -14,8 +14,11 @@ import {
   ResponseInput,
 } from "openai/resources/responses/responses";
 import {VERBOSE_LOGGING} from "../../env";
-import {ContextStore} from "../context/context-store";
-import {ChatInterceptor} from "./chat-interceptor";
+import {ContextStore, RetrievedDocument} from "../context/context-store";
+import {ChatInterceptor, InterceptedRequest} from "./chat-interceptor";
+import {CITATION_DELIMITER, CITATION_START, CITATION_STOP} from "./citation-marker";
+import {CitationOutputTransform} from "./citation-output-transform";
+import {CitationSource, citationSourceId} from "./citation-source";
 import {ResponseBody} from "./chat-service";
 import {RetrievedDocumentFormatter} from "./retrieved-document-formatter";
 
@@ -54,6 +57,29 @@ summaries with clear source/publication information over queries that would retu
 generic anatomy background, unless the patient specifically asked about anatomy.
 `;
 
+/**
+ * How the model is asked to mark where a claim came from.
+ *
+ * The syntax is OpenAI's own, from its citation-formatting guide, rather than something invented
+ * here: the models are trained on it, so it costs nothing to ask for and is followed reliably.
+ */
+const CITATION_PROMPT = `
+[Citing the Retrieved Context]:
+Every <citable id="..."> block above is a source. Cite the sources your answer rests on.
+
+- Write a citation as ${CITATION_START}cite${CITATION_DELIMITER}<id>${CITATION_STOP}, where <id> is
+  the block's id exactly as it appears.
+- Place citations after punctuation — at the end of the paragraph, or at the end of the sentence
+  when the paragraph is long.
+- Cite every source that supports a statement. Where sources disagree, cite all of them.
+- Never write an id in the response text outside a citation, and never place a citation inside
+  bold, italics, a heading, or a code block.
+- Never number the sources yourself. Write only the marker; the reference number a reader sees,
+  such as [1], is put in its place afterwards.
+- Cite only the ids listed above. Ids from earlier in this conversation no longer refer to
+  anything and must not be reused.
+`;
+
 const RAG_RETRIEVAL_LIMIT = 10;
 
 const RETRIEVE_CONTEXT_TOOL: FunctionTool = {
@@ -86,25 +112,28 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
     private readonly openai: OpenAI,
   ) {}
 
-  async intercept(body: ResponseBody): Promise<ResponseBody> {
+  async intercept(body: ResponseBody): Promise<InterceptedRequest> {
     // The client already decides this by way of `ragEnabled`, and is checked again here: a summary that
     // feeds the study report must be of the record it was given, never of retrieved literature, and that
     // is worth holding true even if a request says otherwise.
     if (!hasStudyChatTool(body)) {
-      return body;
+      return {body};
     }
     try {
       if (!hasCurrentInput(body.input)) {
         console.warn(
           "[AgenticRAG] Request has no current input; skipping context injection",
         );
-        return body;
+        return {body};
       }
 
       const queries = await this.determineQueries(body);
+      // Unreachable as `determineQueries` stands — it throws rather than return nothing — and kept
+      // only so a later change there cannot silently retrieve on an empty query.
+      /* c8 ignore next 4 */
       if (queries.length === 0) {
         console.warn("[AgenticRAG] No queries generated, skipping context injection");
-        return body;
+        return {body};
       }
 
       if (VERBOSE_LOGGING) {
@@ -114,23 +143,25 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
       const docs = await Promise.all(
         queries.map((query) => this.contextStore.retrieve(query, RAG_RETRIEVAL_LIMIT)),
       );
-      const ragDocs = docs
-        .flat()
+      const ragDocs = distinctChunks(docs.flat())
         .sort((lhs, rhs) => (lhs.distance ?? 1) - (rhs.distance ?? 1))
         .slice(0, RAG_RETRIEVAL_LIMIT);
       const ragContext = this.formatter.format(ragDocs);
 
       if (!ragContext) {
         console.log("[AgenticRAG] No relevant context found");
-        return body;
+        return {body};
       }
 
       const contextInstructions = `[Retrieved Context from Knowledge Base]:\n${ragContext}`;
       return {
-        ...body,
-        instructions: [body.instructions, contextInstructions]
-          .filter((part): part is string => typeof part === "string" && part.length > 0)
-          .join("\n\n"),
+        body: {
+          ...body,
+          instructions: [body.instructions, contextInstructions, CITATION_PROMPT]
+            .filter((part): part is string => typeof part === "string" && part.length > 0)
+            .join("\n\n"),
+        },
+        outputTransform: new CitationOutputTransform(this.citationSources(ragDocs)),
       };
     } catch (error) {
       console.error("[AgenticRAG] Error during context injection:", error);
@@ -139,6 +170,21 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
         {cause: error},
       );
     }
+  }
+
+  /** The table a marker is resolved against, keyed by the id the model was shown. */
+  private citationSources(docs: RetrievedDocument[]): Map<string, CitationSource> {
+    return new Map(docs.map((doc): [string, CitationSource] => {
+      const id = citationSourceId(doc.file, doc.chunkId);
+      // The metadata came out of an uploaded PDF, so the url is only taken when it is one.
+      const url = doc.metadata?.url;
+      return [id, {
+        id,
+        file: doc.file,
+        title: this.formatter.citationTitle(doc),
+        ...(typeof url === "string" && url !== "" ? {url} : {}),
+      }];
+    }));
   }
 
   private async determineQueries(body: ResponseBody): Promise<string[]> {
@@ -182,6 +228,22 @@ export class AgenticContextChatInterceptor implements ChatInterceptor {
       });
     }
   }
+}
+
+/**
+ * Drops chunks two queries both found.
+ *
+ * Without this the same evidence is shown twice under two ids, which spends the retrieval budget
+ * on nothing and invites the model to cite one passage as though it were two.
+ */
+function distinctChunks(docs: RetrievedDocument[]): RetrievedDocument[] {
+  const seen = new Set<string>();
+  return docs.filter((doc) => {
+    const key = `${doc.file}#${doc.chunkId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function hasStudyChatTool(body: ResponseBody): boolean {
