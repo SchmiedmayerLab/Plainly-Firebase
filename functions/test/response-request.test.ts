@@ -62,6 +62,32 @@ describe("parseResponseRequest", () => {
     });
   }
 
+  it("accepts the image generation tool for a study that allows it", () => {
+    const request = {
+      model: "gpt-5.5",
+      input: "Draw the heart.",
+      tools: [{type: "image_generation"}],
+      stream: true,
+    };
+
+    assert.deepEqual(parseResponseRequest(JSON.stringify(request), {generatesImages: true}), {
+      ...request,
+      store: true,
+    });
+  });
+
+  it("rejects the image generation tool unless the study allows it", () => {
+    assert.throws(
+      () => parseResponseRequest(JSON.stringify({
+        model: "gpt-5.5",
+        input: "Draw the heart.",
+        tools: [{type: "image_generation"}],
+        stream: true,
+      })),
+      /Image generation is not enabled for this study/,
+    );
+  });
+
   it("rejects conversation and background APIs", () => {
     assert.throws(
       () => parseResponseRequest(JSON.stringify({

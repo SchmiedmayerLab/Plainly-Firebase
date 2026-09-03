@@ -61,7 +61,13 @@ const ALLOWED_INPUT_ITEM_TYPES = new Set([
 ]);
 
 /** Parses the narrow Responses API surface that Plainly clients use. */
-export function parseResponseRequest(json: unknown): ResponseBody {
+/** What a request may ask for beyond the fixed allowlist, decided per study by the caller. */
+export interface ResponseRequestOptions {
+  /** Accepts the hosted `image_generation` tool; every other server-executed tool stays refused. */
+  generatesImages?: boolean;
+}
+
+export function parseResponseRequest(json: unknown, options: ResponseRequestOptions = {}): ResponseBody {
   if (typeof json !== "string") {
     throw new Error("The Responses API request must be a JSON string.");
   }
@@ -108,7 +114,7 @@ export function parseResponseRequest(json: unknown): ResponseBody {
   }
 
   validateInput(value.input);
-  validateTools(value.tools);
+  validateTools(value.tools, options.generatesImages === true);
   validateToolChoice(value.tool_choice);
   return {...value, store: true} as ResponseBody;
 }
@@ -139,7 +145,7 @@ function validateInput(input: unknown): void {
   }
 }
 
-function validateTools(tools: unknown): void {
+function validateTools(tools: unknown, generatesImages: boolean): void {
   if (tools === undefined || tools === null) {
     return;
   }
@@ -147,6 +153,12 @@ function validateTools(tools: unknown): void {
     throw new Error("The Responses API request contains an invalid number of tools.");
   }
   for (const tool of tools) {
+    if (isRecord(tool) && tool.type === "image_generation") {
+      if (!generatesImages) {
+        throw new Error("Image generation is not enabled for this study.");
+      }
+      continue;
+    }
     if (!isRecord(tool) || tool.type !== "function" ||
         typeof tool.name !== "string" || tool.name.length === 0) {
       throw new Error("Only named client-side function tools are supported.");
