@@ -126,10 +126,14 @@ export async function handleChatRequest(
       return await chatService.chatStreaming(
         {...responseBody, stream: true},
         async (chunk) => {
+          // The client being gone is what ends the stream, checked before the write so nothing goes
+          // to a closed connection and after it so a departure during the write is seen. `sendChunk`
+          // resolves once the write has gone out; its `false` only says the socket buffer was full at
+          // the time, which a frame the size of a generated image always causes.
+          if (streamingResponse.signal?.aborted) {
+            return false;
+          }
           await bindResponseOwner(chunk);
-          // `sendChunk` resolves once the write has gone out; its `false` only says the socket buffer was
-          // full at the time, which a large frame such as a generated image always causes. The client
-          // being gone is what should end the stream, and the signal is what says so.
           await streamingResponse.sendChunk(chunk);
           return !(streamingResponse.signal?.aborted ?? false);
         },

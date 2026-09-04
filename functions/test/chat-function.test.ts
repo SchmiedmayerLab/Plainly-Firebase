@@ -149,13 +149,15 @@ describe("chat callable handler", () => {
       },
     });
 
+    const stream = streamRecorder({wrote: true, signal: controller.signal});
     await handleChatRequest(
       request({data: continuationBody({stream: true}), acceptsStreaming: true}),
-      streamRecorder({wrote: true, signal: controller.signal}),
+      stream,
       active,
     );
 
     assert.deepEqual(delivered, []);
+    assert.deepEqual(stream.chunks, []);
   });
 
   it("falls back to an unstreamed answer when the transport cannot stream", async () => {
