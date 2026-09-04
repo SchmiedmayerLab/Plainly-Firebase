@@ -294,7 +294,7 @@ describe("ChatService", () => {
     assert.equal(calls, 1);
   });
 
-  it("opens a generated image without its bytes and finishes it with them", () => {
+  it("sends a generated image once, in its finished item", async () => {
     const item = {
       id: "image-1",
       type: "image_generation_call",
@@ -302,13 +302,28 @@ describe("ChatService", () => {
       output_format: "png",
       result: "iVBORw0KGgo=",
     };
-    const events = [...streamEvents({...completedResponse(""), output: [item]})];
+    const client = {
+      responses: {create: async () => ({...completedResponse(""), output: [item]})},
+    } as unknown as OpenAI;
+    const service = new ChatService(client, [], false);
+    const chunks: string[] = [];
+
+    await service.chatStreaming(
+      {...request, stream: true},
+      async (chunk) => {
+        chunks.push(chunk);
+        return true;
+      },
+    );
+
+    const events = parseEvents(chunks) as Array<{type: string; item?: {result: string | null}; response?: {output: {result: string | null}[]}}>;
     const added = events.find((event) => event.type === "response.output_item.added");
     const done = events.find((event) => event.type === "response.output_item.done");
-
-    assert.equal((added as {item: {result: string | null}}).item.result, null);
-    assert.equal((done as {item: {result: string | null}}).item.result, "iVBORw0KGgo=");
-    assert.equal(events.at(-1)?.type, "response.completed");
+    const completed = events.at(-1);
+    assert.equal(added?.item?.result, null);
+    assert.equal(done?.item?.result, "iVBORw0KGgo=");
+    assert.equal(completed?.type, "response.completed");
+    assert.equal(completed?.response?.output[0].result, null);
   });
 
   it("preserves complete output items when adapting a fallback response", async () => {
