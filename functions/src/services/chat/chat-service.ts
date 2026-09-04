@@ -200,7 +200,7 @@ function eventWithoutInstructions(event: ResponseStreamEvent): ResponseStreamEve
   case "response.incomplete":
   case "response.failed":
   case "response.queued":
-    return {...event, response: responseWithoutInstructions(event.response)};
+    return {...event, response: responseWithoutImageBytes(responseWithoutInstructions(event.response))};
   default:
     return event;
   }
@@ -208,6 +208,15 @@ function eventWithoutInstructions(event: ResponseStreamEvent): ResponseStreamEve
 
 function responseWithoutInstructions(response: Response): Response {
   return {...response, instructions: null};
+}
+
+/** Lifecycle events embed the whole response, so a generated image would cross the transport a second
+ * time there; the client reads only the identifier from them, the picture arrives in its item. */
+function responseWithoutImageBytes(response: Response): Response {
+  const output = response.output?.map((item) =>
+    item.type === "image_generation_call" ? {...item, result: null} : item,
+  );
+  return output ? {...response, output} : response;
 }
 
 /**
@@ -435,6 +444,10 @@ function initialOutputItem(item: ResponseOutputItem): ResponseOutputItem {
     return {...item, status: "in_progress", summary: [], content: []};
   case "function_call":
     return {...item, status: "in_progress", arguments: ""};
+  case "image_generation_call":
+    // The picture travels once, in the finished item; a megabyte in the opening frame as well doubles
+    // what the callable transport has to move for nothing.
+    return {...item, status: "in_progress", result: null};
   default:
     return item;
   }

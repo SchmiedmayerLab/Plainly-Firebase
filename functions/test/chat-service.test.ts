@@ -294,6 +294,39 @@ describe("ChatService", () => {
     assert.equal(calls, 1);
   });
 
+  it("sends a generated image once, in its finished item", async () => {
+    const item = {
+      id: "image-1",
+      type: "image_generation_call",
+      status: "completed",
+      output_format: "png",
+      result: "iVBORw0KGgo=",
+    };
+    const client = {
+      responses: {create: async () => ({...completedResponse(""), output: [item]})},
+    } as unknown as OpenAI;
+    const service = new ChatService(client, [], false);
+    const chunks: string[] = [];
+
+    await service.chatStreaming(
+      {...request, stream: true},
+      async (chunk) => {
+        chunks.push(chunk);
+        return true;
+      },
+    );
+
+    type ImageEvent = {type: string; item?: {result: string | null}; response?: {output: {result: string | null}[]}};
+    const events = parseEvents(chunks) as ImageEvent[];
+    const added = events.find((event) => event.type === "response.output_item.added");
+    const done = events.find((event) => event.type === "response.output_item.done");
+    const completed = events.at(-1);
+    assert.equal(added?.item?.result, null);
+    assert.equal(done?.item?.result, "iVBORw0KGgo=");
+    assert.equal(completed?.type, "response.completed");
+    assert.equal(completed?.response?.output[0].result, null);
+  });
+
   it("preserves complete output items when adapting a fallback response", async () => {
     const response = {
       ...completedResponse("Cited answer"),

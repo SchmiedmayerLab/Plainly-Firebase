@@ -29,6 +29,8 @@ export interface ChatHandlerServices {
 /** The slice of the callable's streaming response the handler uses. */
 export interface ChatStreamingResponse {
   sendChunk(chunk: string): Promise<boolean>;
+  /** Set once the client has gone; absent on transports that cannot tell. */
+  signal?: AbortSignal;
 }
 
 export const chat = onCall(
@@ -124,8 +126,16 @@ export async function handleChatRequest(
       return await chatService.chatStreaming(
         {...responseBody, stream: true},
         async (chunk) => {
+          // The client being gone is what ends the stream, checked before the write so nothing goes
+          // to a closed connection and after it so a departure during the write is seen. `sendChunk`
+          // resolves once the write has gone out; its `false` only says the socket buffer was full at
+          // the time, which a frame the size of a generated image always causes.
+          if (streamingResponse.signal?.aborted) {
+            return false;
+          }
           await bindResponseOwner(chunk);
-          return streamingResponse.sendChunk(chunk);
+          await streamingResponse.sendChunk(chunk);
+          return !(streamingResponse.signal?.aborted ?? false);
         },
       );
     } else {
