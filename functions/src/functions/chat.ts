@@ -39,6 +39,9 @@ export const chat = onCall(
     serviceAccount: SERVICE_ACCOUNT,
     timeoutSeconds: 540,
     memory: "512MiB",
+    // The iOS SDK fails a stream on the `: ping` heartbeat comment, and an unstreamed image generation is silent
+    // for longer than the default 30 seconds.
+    heartbeatSeconds: null,
   },
   async (req, res): Promise<string | void> => handleChatRequest(req, res),
 );
