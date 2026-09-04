@@ -316,7 +316,8 @@ describe("ChatService", () => {
       },
     );
 
-    const events = parseEvents(chunks) as Array<{type: string; item?: {result: string | null}; response?: {output: {result: string | null}[]}}>;
+    type ImageEvent = {type: string; item?: {result: string | null}; response?: {output: {result: string | null}[]}};
+    const events = parseEvents(chunks) as ImageEvent[];
     const added = events.find((event) => event.type === "response.output_item.added");
     const done = events.find((event) => event.type === "response.output_item.done");
     const completed = events.at(-1);
