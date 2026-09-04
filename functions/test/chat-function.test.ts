@@ -106,6 +106,58 @@ describe("chat callable handler", () => {
     assert.deepEqual(active.bound, [["resp-2", "user-1", "study-1"]]);
   });
 
+  it("keeps streaming while the client is connected even when a write reports a full buffer", async () => {
+    const chunks = [
+      "data: {\"type\": \"response.created\", \"response\": {\"id\": \"resp-3\"}}\n\n",
+      "data: {\"type\": \"response.output_item.done\", \"item\": {\"type\": \"image_generation_call\"}}\n\n",
+      "data: {\"type\": \"response.completed\", \"response\": {\"id\": \"resp-3\"}}\n\n",
+    ];
+    const delivered: string[] = [];
+    const active = services({
+      streaming: async (onChunk) => {
+        for (const chunk of chunks) {
+          if (!await onChunk(chunk)) {
+            return;
+          }
+          delivered.push(chunk);
+        }
+      },
+    });
+    const stream = streamRecorder({wrote: false, signal: new AbortController().signal});
+
+    await handleChatRequest(
+      request({data: continuationBody({stream: true}), acceptsStreaming: true}),
+      stream,
+      active,
+    );
+
+    assert.deepEqual(delivered, chunks);
+  });
+
+  it("stops streaming once the client is gone", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const delivered: string[] = [];
+    const active = services({
+      streaming: async (onChunk) => {
+        for (const chunk of ["data: {}\n\n", "data: {}\n\n"]) {
+          if (!await onChunk(chunk)) {
+            return;
+          }
+          delivered.push(chunk);
+        }
+      },
+    });
+
+    await handleChatRequest(
+      request({data: continuationBody({stream: true}), acceptsStreaming: true}),
+      streamRecorder({wrote: true, signal: controller.signal}),
+      active,
+    );
+
+    assert.deepEqual(delivered, []);
+  });
+
   it("falls back to an unstreamed answer when the transport cannot stream", async () => {
     const active = services({
       nonStreaming: async () => JSON.stringify({object: "response", id: "resp-3"}),
@@ -224,13 +276,16 @@ function services(overrides: ServiceOverrides = {}): FakeServices {
   return fake;
 }
 
-function streamRecorder(): {chunks: string[]; sendChunk(chunk: string): Promise<boolean>} {
+function streamRecorder(
+  options: {wrote?: boolean; signal?: AbortSignal} = {},
+): {chunks: string[]; sendChunk(chunk: string): Promise<boolean>; signal?: AbortSignal} {
   const chunks: string[] = [];
   return {
     chunks,
+    signal: options.signal,
     sendChunk: async (chunk: string) => {
       chunks.push(chunk);
-      return true;
+      return options.wrote ?? true;
     },
   };
 }

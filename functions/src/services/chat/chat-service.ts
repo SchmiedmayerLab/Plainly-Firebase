@@ -435,6 +435,10 @@ function initialOutputItem(item: ResponseOutputItem): ResponseOutputItem {
     return {...item, status: "in_progress", summary: [], content: []};
   case "function_call":
     return {...item, status: "in_progress", arguments: ""};
+  case "image_generation_call":
+    // The picture travels once, in the finished item; a megabyte in the opening frame as well doubles
+    // what the callable transport has to move for nothing.
+    return {...item, status: "in_progress", result: null};
   default:
     return item;
   }

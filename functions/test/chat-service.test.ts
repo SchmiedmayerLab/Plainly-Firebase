@@ -294,6 +294,23 @@ describe("ChatService", () => {
     assert.equal(calls, 1);
   });
 
+  it("opens a generated image without its bytes and finishes it with them", () => {
+    const item = {
+      id: "image-1",
+      type: "image_generation_call",
+      status: "completed",
+      output_format: "png",
+      result: "iVBORw0KGgo=",
+    };
+    const events = [...streamEvents({...completedResponse(""), output: [item]})];
+    const added = events.find((event) => event.type === "response.output_item.added");
+    const done = events.find((event) => event.type === "response.output_item.done");
+
+    assert.equal((added as {item: {result: string | null}}).item.result, null);
+    assert.equal((done as {item: {result: string | null}}).item.result, "iVBORw0KGgo=");
+    assert.equal(events.at(-1)?.type, "response.completed");
+  });
+
   it("preserves complete output items when adapting a fallback response", async () => {
     const response = {
       ...completedResponse("Cited answer"),
