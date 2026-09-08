@@ -10,6 +10,15 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    match /studies/{studyId}/{fileName} {
+      allow read, update, delete: if false;
+      allow create: if request.auth != null
+                    && fileName.matches('.*[.]json')
+                    && request.resource.metadata.userId == request.auth.uid
+                    && resource == null;
+    }
+
+    // Keep uploads from older app versions working while reports move to the study folder.
     match /studies/{studyId}/users/{userId}/{allPaths=**} {
       allow read, update, delete: if false;
       allow create: if request.auth != null
