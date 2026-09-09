@@ -49,7 +49,7 @@ after(async () => {
 });
 
 describe("Firebase Security Rules", () => {
-  it("allows flat study reports with the authenticated user's metadata", async () => {
+  it("allows study reports with the authenticated user's metadata", async () => {
     for (const {userId, filename} of [
       {userId: "owner", filename: "study_pid-participant-1_2026-09-08T14-30-22.123Z_a1b2c3d4.json"},
       {userId: "other-user", filename: "study_2026-09-08T14-30-22.123Z_a1b2c3d4.json"},
@@ -57,7 +57,7 @@ describe("Firebase Security Rules", () => {
     ]) {
       const user = testEnvironment.authenticatedContext(userId);
       await assertSucceeds(
-        user.storage(bucketUrl).ref(`studies/study/${filename}`).putString(
+        user.storage(bucketUrl).ref(`studies/study/reports/${filename}`).putString(
           "{}",
           "raw",
           {contentType: "application/octet-stream", customMetadata: {userId}},
@@ -66,9 +66,9 @@ describe("Firebase Security Rules", () => {
     }
   });
 
-  it("rejects flat reports with missing or mismatched user metadata", async () => {
+  it("rejects reports with missing or mismatched user metadata", async () => {
     const owner = testEnvironment.authenticatedContext("owner");
-    const path = "studies/study/study_2026-09-08T14-30-22.123Z_a1b2c3d4.json";
+    const path = "studies/study/reports/study_2026-09-08T14-30-22.123Z_a1b2c3d4.json";
 
     await assertFails(owner.storage(bucketUrl).ref(path).putString(
       "{}",
@@ -89,10 +89,10 @@ describe("Firebase Security Rules", () => {
     );
   });
 
-  it("rejects unauthenticated flat report uploads even with user metadata", async () => {
+  it("rejects unauthenticated report uploads even with user metadata", async () => {
     await assertFails(
       testEnvironment.unauthenticatedContext().storage(bucketUrl)
-        .ref("studies/study/study_2026-09-08T14-30-22.123Z_a1b2c3d4.json").putString(
+        .ref("studies/study/reports/study_2026-09-08T14-30-22.123Z_a1b2c3d4.json").putString(
           "{}",
           "raw",
           {contentType: "application/octet-stream", customMetadata: {userId: "owner"}},
@@ -100,11 +100,11 @@ describe("Firebase Security Rules", () => {
     );
   });
 
-  it("limits the new report rule to direct JSON files in the study folder", async () => {
+  it("limits the report rule to JSON files in the reports folder", async () => {
     const owner = testEnvironment.authenticatedContext("owner");
     for (const path of [
-      "studies/study/report.txt",
-      "studies/study/reports/report.json",
+      "studies/study/reports/report.txt",
+      "studies/study/report.json",
       "studies/study/rag_files/injected.json",
       "studies/study/rag_files/injected.txt",
       "studies/study/users/other-user/report.json",
@@ -117,10 +117,10 @@ describe("Firebase Security Rules", () => {
     }
   });
 
-  it("prevents clients from reading, replacing, or deleting flat reports", async () => {
+  it("prevents clients from reading, replacing, or deleting reports", async () => {
     const owner = testEnvironment.authenticatedContext("owner");
     const file = owner.storage(bucketUrl)
-      .ref("studies/study/study_2026-09-08T14-30-22.123Z_a1b2c3d4.json");
+      .ref("studies/study/reports/study_2026-09-08T14-30-22.123Z_a1b2c3d4.json");
     const metadata = {contentType: "application/octet-stream", customMetadata: {userId: "owner"}};
     await assertSucceeds(file.putString("{}", "raw", metadata));
 

@@ -10,7 +10,7 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    match /studies/{studyId}/{fileName} {
+    match /studies/{studyId}/reports/{fileName} {
       allow read, update, delete: if false;
       allow create: if request.auth != null
                     && fileName.matches('.*[.]json')
