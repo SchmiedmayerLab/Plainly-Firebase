@@ -16,10 +16,16 @@ updates:
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: "weekly-dependencies"
+    cooldown:
+      default-days: 7
+      exclude: ["SchmiedmayerLab/*"]
   - package-ecosystem: "npm"
     directory: "/functions"
     patterns: ["*"]
     multi-ecosystem-group: "weekly-dependencies"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     # typescript-eslint does not support TypeScript 7 yet.
     ignore:
       - dependency-name: "typescript"
@@ -28,6 +34,9 @@ updates:
     directory: "/web"
     patterns: ["*"]
     multi-ecosystem-group: "weekly-dependencies"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     # typescript-eslint does not support TypeScript 7 yet.
     ignore:
       - dependency-name: "typescript"
