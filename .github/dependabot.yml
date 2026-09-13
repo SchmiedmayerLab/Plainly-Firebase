@@ -20,7 +20,15 @@ updates:
     directory: "/functions"
     patterns: ["*"]
     multi-ecosystem-group: "weekly-dependencies"
+    # typescript-eslint does not support TypeScript 7 yet.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/web"
     patterns: ["*"]
     multi-ecosystem-group: "weekly-dependencies"
+    # typescript-eslint does not support TypeScript 7 yet.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
