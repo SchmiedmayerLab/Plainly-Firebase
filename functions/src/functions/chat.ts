@@ -9,6 +9,7 @@
 import {CallableRequest, HttpsError, onCall} from "firebase-functions/https";
 import OpenAI from "openai";
 import {Secrets, SERVICE_ACCOUNT} from "../env";
+import {callableError, studyIdFromQuery} from "./callable-request";
 import {createChatService, ServiceOptions} from "../services/create-services";
 import {ChatService, streamErrorSequenceNumber} from "../services/chat/chat-service";
 import {parseResponseRequest} from "../services/chat/response-request";
@@ -64,13 +65,7 @@ export async function handleChatRequest(
   // Per study, like RAG: the app asks for the hosted image generation tool only where a study allows it.
   const generatesImages = req.rawRequest.query.generatesImages === "true";
 
-  const studyId = req.rawRequest.query.studyId;
-  if (
-    typeof studyId !== "string" ||
-    !/^[A-Za-z0-9._-]{1,128}$/.test(studyId)
-  ) {
-    throw new HttpsError("invalid-argument", "Missing or invalid studyId query parameter");
-  }
+  const studyId = studyIdFromQuery(req);
 
   let responseBody;
   try {
@@ -195,33 +190,6 @@ function formatStreamingErrorResponse(
     param: errorPayload.param ?? null,
     sequence_number: sequenceNumber,
   })}\n\n`;
-}
-
-function callableError(error: unknown): HttpsError {
-  const message = error instanceof Error ? error.message : "Internal server error";
-  if (!(error instanceof OpenAI.APIError)) {
-    return new HttpsError("internal", message);
-  }
-
-  switch (error.status) {
-  case 400:
-    return new HttpsError("invalid-argument", message);
-  case 401:
-    return new HttpsError("unauthenticated", message);
-  case 403:
-    return new HttpsError("permission-denied", message);
-  case 404:
-    return new HttpsError("not-found", message);
-  case 409:
-    return new HttpsError("aborted", message);
-  case 429:
-    return new HttpsError("resource-exhausted", message);
-  default:
-    return new HttpsError(
-      error.status !== undefined && error.status >= 500 ? "unavailable" : "internal",
-      message,
-    );
-  }
 }
 
 function responseIdFromPayload(payload: string): string | undefined {

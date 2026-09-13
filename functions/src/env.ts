@@ -11,7 +11,40 @@ import {defineSecret} from "firebase-functions/params";
 export const Secrets = {
   OPENAI_API_KEY: defineSecret("OPENAI_API_KEY"),
   OPENAI_BASE_URL: defineSecret("OPENAI_BASE_URL"),
+  OPENAI_REALTIME_API_KEY: defineSecret("OPENAI_REALTIME_API_KEY"),
+  OPENAI_REALTIME_BASE_URL: defineSecret("OPENAI_REALTIME_BASE_URL"),
 };
+
+export interface OpenAICredentials {
+  apiKey: string;
+  baseUrl: string | undefined;
+}
+
+function chatCredentials(): OpenAICredentials {
+  return {
+    apiKey: Secrets.OPENAI_API_KEY.value(),
+    baseUrl: Secrets.OPENAI_BASE_URL.value().trim() || undefined,
+  };
+}
+
+/**
+ * The key and endpoint voice sessions are minted for, and therefore the endpoint the client streams its audio to.
+ *
+ * A gateway that serves chat need not serve realtime yet, so voice can be pointed elsewhere on its own: set a
+ * realtime key and the realtime pair is used, leave it empty and voice shares the chat pair.
+ */
+export function realtimeCredentials(): OpenAICredentials {
+  const apiKey = Secrets.OPENAI_REALTIME_API_KEY.value().trim();
+  if (!apiKey) {
+    return chatCredentials();
+  }
+  const baseUrl = Secrets.OPENAI_REALTIME_BASE_URL.value().trim();
+  // Without its endpoint the key would go to the SDK's default one, which need not be where it belongs.
+  if (!baseUrl) {
+    throw new Error("OPENAI_REALTIME_BASE_URL must be set whenever OPENAI_REALTIME_API_KEY is.");
+  }
+  return {apiKey, baseUrl};
+}
 
 export const SERVICE_ACCOUNT = `cloud-function-sa@${process.env.GCLOUD_PROJECT}.iam.gserviceaccount.com`;
 

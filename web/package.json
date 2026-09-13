@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "node --test src/hooks/responses.test.ts",
+    "test": "node --test src/hooks/responses.test.ts src/hooks/realtime.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

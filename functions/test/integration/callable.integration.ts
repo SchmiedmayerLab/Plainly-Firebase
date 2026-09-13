@@ -239,6 +239,66 @@ describe("chat callable", () => {
   });
 });
 
+describe("realtimeSession callable", () => {
+  it("rejects unauthenticated requests", async () => {
+    const other = initializeApp({
+      apiKey: "integration-test-key",
+      appId: "integration-test-app",
+      projectId: "demo-plainly",
+    }, `realtime-anonymous-${randomUUID()}`);
+    const otherFunctions = getFunctions(other, "us-central1");
+    connectFunctionsEmulator(otherFunctions, "127.0.0.1", 5001);
+    try {
+      await assert.rejects(
+        httpsCallable(otherFunctions, "realtimeSession?studyId=test-study")("{}"),
+        hasFunctionsCode("functions/unauthenticated"),
+      );
+    } finally {
+      await deleteApp(other);
+    }
+  });
+
+  it("mints a pinned session for the configured endpoint", async () => {
+    await signInAnonymously(auth);
+    const mint = httpsCallable(functions, "realtimeSession?studyId=test-study");
+
+    const result = await mint(JSON.stringify({model: "gpt-realtime-mini", instructions: "Be brief."}));
+    const grant = JSON.parse(result.data as string);
+
+    assert.match(grant.value, /^ek_/);
+    assert.equal(typeof grant.expires_at, "number");
+    assert.equal(typeof grant.base_url, "string");
+    assert.equal(grant.session.model, "gpt-realtime-mini");
+    assert.equal(grant.session.tool_choice, "required");
+    assert.equal(grant.session.tools.length, 1);
+  });
+
+  it("rejects a request outside the allowlist", async () => {
+    await signInAnonymously(auth);
+    const mint = httpsCallable(functions, "realtimeSession?studyId=test-study");
+
+    await assert.rejects(
+      mint(JSON.stringify({model: "gpt-5.5", instructions: "Be brief."})),
+      hasFunctionsCode("functions/invalid-argument"),
+    );
+  });
+
+  it("stops minting once a participant used up the hourly allowance", async () => {
+    const client = await createSignedInClient();
+    try {
+      const mint = httpsCallable(client.functions, "realtimeSession?studyId=test-study");
+      const body = JSON.stringify({model: "gpt-realtime-mini", instructions: "Be brief."});
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        await mint(body);
+      }
+
+      await assert.rejects(mint(body), hasFunctionsCode("functions/resource-exhausted"));
+    } finally {
+      await deleteApp(client.app);
+    }
+  });
+});
+
 interface TestClient {
   app: FirebaseApp;
   functions: Functions;

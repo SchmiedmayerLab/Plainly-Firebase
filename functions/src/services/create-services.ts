@@ -29,6 +29,8 @@ import {emulatorMockChatResponse} from "../env";
 import {createMockOpenAIClient, MockOpenAIClientOptions} from "./chat/mock-openai-client";
 import {openAI} from "@genkit-ai/compat-oai/openai";
 import {OpenAI} from "openai/client";
+import {RealtimeSessionMinter} from "./realtime/realtime-session-minter";
+import {createMockRealtimeClientSecrets} from "./realtime/mock-realtime-client-secrets";
 
 export interface ServiceOptions {
   studyId: string;
@@ -131,6 +133,23 @@ export function createChatService(
     client,
     [new AgenticContextChatInterceptor(contextStore, client)],
     responsesStreamingSupported,
+  );
+}
+
+export function createRealtimeSessionMinter(
+  options: ServiceOptions,
+  mockResponse = emulatorMockChatResponse(),
+): RealtimeSessionMinter {
+  // Well inside the callable's 30 second deadline, so a hanging endpoint surfaces as a provider error.
+  const client = new OpenAI({
+    baseURL: options.openAIBaseUrl,
+    apiKey: options.openAIApiKey,
+    timeout: 20_000,
+    maxRetries: 1,
+  });
+  return new RealtimeSessionMinter(
+    mockResponse !== undefined ? createMockRealtimeClientSecrets() : client.realtime.clientSecrets,
+    client.baseURL,
   );
 }
 

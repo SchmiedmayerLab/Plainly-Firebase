@@ -38,13 +38,15 @@ const app = initializeApp({
   projectId: "som-rit-phi-lit-ai-dev",
 });
 
-const auth = initializeAuth(app, {});
+export const auth = initializeAuth(app, {});
 connectAuthEmulator(auth, "http://localhost:9099");
 
-const functions = getFunctions(app);
+export const functions = getFunctions(app);
 connectFunctionsEmulator(functions, "localhost", 5001);
 
-const model = resolveResponseModel(import.meta.env.VITE_LLM_MODEL);
+export const model = resolveResponseModel(import.meta.env.VITE_LLM_MODEL);
+export const studyId: string =
+  import.meta.env.VITE_STUDY_ID || "edu.stanford.plainly.spineAI";
 
 function urlString(url: string | Request | URL): string {
   return url instanceof Request ? url.url : url.toString();
@@ -57,15 +59,13 @@ function requestBody(init?: RequestInit): string {
   return init.body;
 }
 
-const createOpenAIClient = (ragEnabled: boolean) => {
+export const createOpenAIClient = (ragEnabled: boolean) => {
   const customFetch = async (
     url: string | Request | URL,
     init?: RequestInit
   ): Promise<Response> => {
     if (urlString(url).includes("/v1/responses")) {
       await signInAnonymously(auth);
-      const studyId =
-        import.meta.env.VITE_STUDY_ID || "edu.stanford.plainly.spineAI";
       const name =
         `chat?studyId=${studyId}&ragEnabled=${ragEnabled}`
       const body = requestBody(init);
@@ -153,13 +153,13 @@ const MOCK_RESPONSES: Record<string, string> = {
     "This is the summary of the requested Observation-Pulse-02-18-2024:\n\nPulse Observation\nPulse rate recorded as 77 beats per minute on February 18, 2024.",
 };
 
-const SYSTEM_PROMPT = `You are an LLM-powered health assistant for patients. You help patients understand their health records, medical history, and answer health-related questions based on their FHIR data.
+export const SYSTEM_PROMPT = `You are an LLM-powered health assistant for patients. You help patients understand their health records, medical history, and answer health-related questions based on their FHIR data.
 
 When a user asks about their health information, use the get_resources tool to retrieve the relevant FHIR resources. Then, explain the information in simple, patient-friendly language.
 
 Be empathetic, clear, and helpful. If you don't have enough information to answer a question, say so honestly.`;
 
-const tools: FunctionTool[] = [
+export const tools: FunctionTool[] = [
   {
     type: "function",
     name: "get_resources",
@@ -202,7 +202,7 @@ const tools: FunctionTool[] = [
   },
 ];
 
-const executeToolCall = (toolCall: ToolCall): string => {
+export const executeToolCall = (toolCall: ToolCall): string => {
   const { name, arguments: argsStr } = toolCall;
   const args = JSON.parse(argsStr || "{}");
 

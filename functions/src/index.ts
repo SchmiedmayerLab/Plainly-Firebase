@@ -17,6 +17,7 @@
 
 import {setGlobalOptions} from "firebase-functions";
 import {chat} from "./functions/chat";
+import {realtimeSession} from "./functions/realtime-session";
 import {onPDFUploaded} from "./functions/on-pdf-uploaded";
 import {onDocumentDeleted} from "./functions/on-document-deleted";
 import {initializeApp} from "firebase-admin/app";
@@ -25,4 +26,4 @@ setGlobalOptions({maxInstances: 10});
 
 initializeApp();
 
-export {chat, onPDFUploaded, onDocumentDeleted};
+export {chat, realtimeSession, onPDFUploaded, onDocumentDeleted};
