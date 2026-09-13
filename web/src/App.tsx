@@ -8,6 +8,7 @@
 
 import React, { useState } from "react";
 import { ChatPanel } from "./components/ChatPanel";
+import { VoicePanel } from "./components/VoicePanel";
 import { useChat } from "./hooks/useChat";
 
 export function App() {
@@ -77,6 +78,11 @@ export function App() {
             isLoading={noRagChat.isLoading}
             currentResponse={noRagChat.currentResponse}
           />
+        </div>
+
+        {/* Voice layer on top of the RAG-enabled chat */}
+        <div className="mb-6">
+          <VoicePanel />
         </div>
 
         {/* Input Form */}

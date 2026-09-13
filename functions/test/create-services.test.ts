@@ -13,8 +13,10 @@ import {
   createAI,
   createChatService,
   createIndexingService,
+  createRealtimeSessionMinter,
   supportsResponsesStreaming,
 } from "../src/services/create-services";
+import {RealtimeSessionMinter} from "../src/services/realtime/realtime-session-minter";
 
 const options = {
   studyId: "study",
@@ -118,5 +120,16 @@ describe("createIndexingService", () => {
 
   it("creates an indexing service for a custom base URL", () => {
     assert.ok(createIndexingService(customBaseUrlOptions));
+  });
+});
+
+describe("createRealtimeSessionMinter", () => {
+  it("mints against the configured endpoint, or the provider default without one", async () => {
+    const mocked = await createRealtimeSessionMinter(customBaseUrlOptions, "Mocked response.")
+      .mint({model: "gpt-realtime", instructions: "Hi"});
+    assert.match(mocked.value, /^ek_mock_/);
+    assert.equal(mocked.base_url, "https://openai.example.com/v1");
+
+    assert.ok(createRealtimeSessionMinter(options, undefined) instanceof RealtimeSessionMinter);
   });
 });
