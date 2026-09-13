@@ -11,6 +11,13 @@ const MAX_INSTRUCTIONS_LENGTH = 32_000;
 
 const ALLOWED_KEYS = new Set(["model", "instructions", "voice", "language"]);
 
+// The languages the transcription model supports; a device set to another one is transcribed without a hint.
+const TRANSCRIPTION_LANGUAGES = new Set([
+  "af", "ar", "az", "be", "bg", "bs", "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "fa", "fi", "fr", "gl",
+  "he", "hi", "hr", "hu", "hy", "id", "is", "it", "ja", "kk", "kn", "ko", "lt", "lv", "mi", "mk", "mr", "ms", "ne",
+  "nl", "no", "pl", "pt", "ro", "ru", "sk", "sl", "sr", "sv", "sw", "ta", "th", "tl", "tr", "uk", "ur", "vi", "zh",
+]);
+
 const ALLOWED_MODELS = new Set([
   "gpt-realtime",
   "gpt-realtime-mini",
@@ -68,6 +75,6 @@ export function parseRealtimeSessionRequest(json: unknown): RealtimeSessionReque
     model: request.model,
     instructions: request.instructions,
     voice: request.voice as string | undefined,
-    language: request.language as string | undefined,
+    language: TRANSCRIPTION_LANGUAGES.has(request.language as string) ? request.language as string : undefined,
   };
 }

@@ -7,6 +7,7 @@
 //
 
 import {CallableRequest, HttpsError, onCall} from "firebase-functions/https";
+import OpenAI from "openai";
 import {OpenAICredentials, realtimeCredentials, Secrets, SERVICE_ACCOUNT} from "../env";
 import {createRealtimeSessionMinter, ServiceOptions} from "../services/create-services";
 import {RealtimeSessionMinter} from "../services/realtime/realtime-session-minter";
@@ -109,6 +110,17 @@ export async function handleRealtimeSessionRequest(
     await services.sessions.release(reservation).catch((releaseError: unknown) => {
       console.error("Unable to return the voice session allowance:", releaseError);
     });
-    throw callableError(error);
+    throw realtimeSessionError(error);
   }
+}
+
+/**
+ * A provider failure as the participant sees it: they signed in, so a rejected key is the backend's configuration, and
+ * the provider's own message stays in the logs.
+ */
+function realtimeSessionError(error: unknown): HttpsError {
+  if (error instanceof OpenAI.APIError && (error.status === 401 || error.status === 403)) {
+    return new HttpsError("failed-precondition", "Voice sessions are not available right now.");
+  }
+  return new HttpsError(callableError(error).code, "The voice session could not be started.");
 }

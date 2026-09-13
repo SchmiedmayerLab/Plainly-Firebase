@@ -79,7 +79,11 @@ describe("realtime session callable handler", () => {
   it("maps provider failures onto callable error codes and returns the allowance", async () => {
     const failing = services({mint: () => Promise.reject(mockApiError(401))});
 
-    await assert.rejects(handleRealtimeSessionRequest(request(), failing), httpsError("unauthenticated"));
+    await assert.rejects(
+      handleRealtimeSessionRequest(request(), failing),
+      (error: unknown) => error instanceof HttpsError && error.code === "failed-precondition" &&
+        !error.message.includes("Mock API error"),
+    );
     assert.equal(failing.released, 1);
   });
 

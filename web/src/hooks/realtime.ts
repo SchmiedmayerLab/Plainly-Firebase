@@ -76,20 +76,29 @@ export function textInputEvents(itemId: string, text: string): object[] {
   ];
 }
 
+const UNPAIRED_PREFIX = "unpaired:";
+
 /**
  * Pairs each forwarding call with the transcript of the participant turn it answers.
  *
- * The transcription and the function call arrive independently and in either order, so a call waits
- * for the transcript of the latest user item until it lands or is given up on.
+ * The user item, its transcript and the function call arrive independently and in any order. A call takes the newest
+ * user item no earlier call has taken, or waits for the next one to arrive; either way it then waits for that item's
+ * transcript until it lands or is given up on.
  */
 export class VoiceTurnQueue {
   #userItems: string[] = [];
+  #pairedItems = new Set<string>();
   #transcripts = new Map<string, string | null>();
-  #pending: { call: RealtimeFunctionCall; userItemId: string | undefined }[] = [];
+  #pending: { call: RealtimeFunctionCall; userItemId: string }[] = [];
 
   userItemAdded(itemId: string): void {
-    if (!this.#userItems.includes(itemId)) {
-      this.#userItems.push(itemId);
+    if (this.#userItems.includes(itemId)) return;
+    this.#userItems.push(itemId);
+    const waiting = this.#pending.find((entry) =>
+      entry.userItemId.startsWith(UNPAIRED_PREFIX) && !this.#transcripts.has(entry.userItemId));
+    if (waiting) {
+      waiting.userItemId = itemId;
+      this.#pairedItems.add(itemId);
     }
   }
 
@@ -105,21 +114,29 @@ export class VoiceTurnQueue {
   }
 
   functionCalled(call: RealtimeFunctionCall): void {
-    this.#pending.push({ call, userItemId: this.#userItems.at(-1) });
+    let itemId: string | undefined;
+    for (let index = this.#userItems.length - 1; index >= 0 && itemId === undefined; index -= 1) {
+      if (!this.#pairedItems.has(this.#userItems[index])) itemId = this.#userItems[index];
+    }
+    if (itemId === undefined) {
+      this.#pending.push({ call, userItemId: `${UNPAIRED_PREFIX}${call.callId}` });
+      return;
+    }
+    this.#pairedItems.add(itemId);
+    this.#pending.push({ call, userItemId: itemId });
   }
 
-  /** The user item a still-waiting call needs a transcript for, if any. */
+  /** What the first waiting call still needs: its user item's transcript, or the user item itself. */
   get awaitedItemId(): string | undefined {
-    const waiting = this.#pending.find((entry) => !this.isResolved(entry.userItemId));
-    return waiting?.userItemId;
+    return this.#pending.find((entry) => !this.#transcripts.has(entry.userItemId))?.userItemId;
   }
 
   /** Releases, in order, every call whose transcript arrived or was abandoned. */
   take(): VoiceTurn[] {
     const ready: VoiceTurn[] = [];
-    while (this.#pending.length > 0 && this.isResolved(this.#pending[0].userItemId)) {
+    while (this.#pending.length > 0 && this.#transcripts.has(this.#pending[0].userItemId)) {
       const { call, userItemId } = this.#pending.shift()!;
-      const transcript = userItemId === undefined ? null : this.#transcripts.get(userItemId) ?? null;
+      const transcript = this.#transcripts.get(userItemId) ?? null;
       ready.push(
         transcript === null ?
           { call, question: questionFromArguments(call.arguments), source: "paraphrase" } :
@@ -127,9 +144,5 @@ export class VoiceTurnQueue {
       );
     }
     return ready;
-  }
-
-  private isResolved(userItemId: string | undefined): boolean {
-    return userItemId === undefined || this.#transcripts.has(userItemId);
   }
 }

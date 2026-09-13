@@ -245,13 +245,6 @@ export function useVoice() {
     setStatus("connecting");
     try {
       await signInAnonymously(auth);
-      const mint = httpsCallable<string, string>(functions, `realtimeSession?studyId=${studyId}`);
-      const grant = JSON.parse(
-        (await mint(JSON.stringify({ model: DEFAULT_REALTIME_MODEL, instructions: VOICE_INSTRUCTIONS }))).data,
-      ) as RealtimeSessionGrant;
-      if (session !== generation.current) return;
-      note("note", `Session ${grant.session.id} on ${grant.base_url}`);
-
       const peer = new RTCPeerConnection();
       connection.current = peer;
       peer.onconnectionstatechange = () => {
@@ -282,6 +275,16 @@ export function useVoice() {
         setHasMicrophone(false);
         note("note", "No microphone; type a turn below instead.");
       }
+      if (session !== generation.current) return;
+
+      // Minted once the microphone is settled: a permission prompt can outlast the secret.
+      const mint = httpsCallable<string, string>(functions, `realtimeSession?studyId=${studyId}`);
+      const grant = JSON.parse(
+        (await mint(JSON.stringify({ model: DEFAULT_REALTIME_MODEL, instructions: VOICE_INSTRUCTIONS }))).data,
+      ) as RealtimeSessionGrant;
+      if (session !== generation.current) return;
+      note("note", `Session ${grant.session.id} on ${grant.base_url}`);
+
       const events = peer.createDataChannel("oai-events");
       channel.current = events;
       events.onmessage = (message) => handle(JSON.parse(message.data) as RealtimeEvent);

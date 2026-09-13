@@ -27,6 +27,14 @@ describe("parseRealtimeSessionRequest", () => {
     });
   });
 
+  it("drops a transcription language the model does not support", () => {
+    const request = parseRealtimeSessionRequest(
+      JSON.stringify({model: "gpt-realtime", instructions: "Hi", language: "zz"}),
+    );
+
+    assert.equal(request.language, undefined);
+  });
+
   it("leaves optional fields unset", () => {
     const request = parseRealtimeSessionRequest(JSON.stringify({model: "gpt-realtime", instructions: "Hi"}));
 
