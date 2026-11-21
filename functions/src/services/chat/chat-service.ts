@@ -418,14 +418,16 @@ function* outputItemEvents(
       delta: item.arguments,
       sequence_number: nextSequenceNumber(),
     };
-    yield {
+    // Keep the function name in the synthesized event sent to existing clients.
+    const argumentsDone = {
       type: "response.function_call_arguments.done",
       item_id: itemId,
       output_index: outputIndex,
       name: item.name,
       arguments: item.arguments,
       sequence_number: nextSequenceNumber(),
-    };
+    } satisfies ResponseStreamEvent & {name: string};
+    yield argumentsDone;
   }
 
   yield {
