@@ -211,6 +211,7 @@ function mockResponse(
   return {
     id: responseId,
     object: "response",
+    access_programs: null,
     created_at: 0,
     status: "completed",
     model,
