@@ -161,7 +161,7 @@ firebase functions:secrets:set OPENAI_REALTIME_API_KEY
 firebase functions:secrets:set OPENAI_REALTIME_BASE_URL
 ```
 
-The deployment workflow validates the project before deploying. Pushes to `main` deploy to the staging environment; configured environments can also be selected through a manual workflow run.
+The deployment workflow validates the project before deploying. Pushes to `main` deploy to staging. The [production workflow](.github/workflows/production.yml) deploys stable GitHub releases to production.
 
 ## Project Structure
 

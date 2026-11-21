@@ -23,7 +23,6 @@ on:
         options:
           - development
           - staging
-          - production
   workflow_call:
     inputs:
       environment:
@@ -32,9 +31,14 @@ on:
         required: false
         type: string
         default: development
+      validate_only:
+        description: Run checks without deploying.
+        type: boolean
+        default: false
 
 concurrency:
-  group: deployment
+  # Per environment, so a production deploy waiting for approval never holds back or cancels a staging deploy.
+  group: deployment-${{ inputs.environment || 'staging' }}${{ inputs.validate_only && '-validation' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -55,6 +59,12 @@ jobs:
             echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
           fi
   vars:
+    if: >-
+      !inputs.validate_only &&
+      (needs.determineenvironment.outputs.environment != 'production' ||
+        (github.repository == 'SchmiedmayerLab/Plainly-Firebase' &&
+          github.event_name == 'release' && github.event.action == 'published' &&
+          !github.event.release.prerelease))
     name: Inject Environment Variables In Deployment Workflow
     needs: determineenvironment
     runs-on: ubuntu-latest
