@@ -11,8 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "firebase": "^12.19.0",
-    "openai": "^7.57.0",
+    "firebase": "^13.3.0",
+    "openai": "^7.60.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
@@ -29,12 +29,12 @@
     "autoprefixer": "^10.5.5",
     "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.6",
+    "eslint-plugin-react-refresh": "^0.5.8",
     "globals": "^17.12.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.70.0",
+    "typescript-eslint": "^8.73.0",
     "vite": "^8.3.8"
   },
   "overrides": {
