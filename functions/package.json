@@ -27,20 +27,20 @@
     "firebase-admin": "^14.4.0",
     "firebase-functions": "^7.3.2",
     "genkit": "^1.42.0",
-    "openai": "^7.57.0",
+    "openai": "^7.60.0",
     "pdf-lib": "^1.17.1",
-    "unpdf": "^1.8.1"
+    "unpdf": "^2.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@firebase/rules-unit-testing": "^5.0.2",
+    "@firebase/rules-unit-testing": "^6.0.0",
     "c8": "^12.0.0",
     "eslint": "^10.10.0",
-    "firebase": "^12.19.0",
+    "firebase": "^13.3.0",
     "globals": "^17.12.0",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.70.0"
+    "typescript-eslint": "^8.73.0"
   },
   "overrides": {
     "brace-expansion@<1.1.18": "1.1.18",
